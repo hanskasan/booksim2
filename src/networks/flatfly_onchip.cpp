@@ -1231,6 +1231,7 @@ int find_distance (int src, int dest) {
 //=============================================================^M
 int find_ran_intm (int src, int dest) {
   int _dim   = gN;
+  assert(gN < 3); // HANS: Please check again for FF with 3 or more dimensions
   int _dim_size;
   int _ran_dest = 0;
   int debug = 0;
@@ -1241,24 +1242,45 @@ int find_ran_intm (int src, int dest) {
   src = (int) (src / gC);
   dest = (int) (dest / gC);
   
-  _ran_dest = RandomInt(gC - 1);
+  _ran_dest = RandomInt(gC - 1); // Select a random node within a router
+
   if (debug) cout << " ............ _ran_dest : " << _ran_dest << endl;
+
   for (int d=0;d < _dim; d++) {
     
     _dim_size = powi(gK, d)*gC;
-    if ((src % gK) ==  (dest % gK)) {
-      _ran_dest += (src % gK) * _dim_size;
+    if ((src % gK) ==  (dest % gK)) { // HANS: If the source and destination routers share the same column
+      if (d == 0){
+        _ran_dest += (src % gK) * _dim_size;
+      } else {
+        _ran_dest += RandomInt(gK - 1) * _dim_size;
+      }
+
       if (debug) 
-	cout << "    share same dimension : " << d << " int node : " << _ran_dest << " src ID : " << src % gK << endl;
+	      cout << "    share same column : " << d << " int node : " << _ran_dest << " src ID : " << src % gK << endl;
+
+    } else if ((src / gK) == (dest / gK)) { // HANS: If the source and destination routers share the same row
+      if (d == 0){
+        _ran_dest += RandomInt(gK - 1) * _dim_size;
+      } else {
+        _ran_dest += (src / gK) * _dim_size;
+      }
+
+      if (debug)
+	      cout << "    share same row : " << d << " int node : " << _ran_dest << " src ID : " << src % gK << endl;
+
+
     } else {
       // src and dest are in the same dimension "d" + 1
       // ==> thus generate a random destination within
       _ran_dest += RandomInt(gK - 1) * _dim_size;
+
       if (debug) 
-	cout << "    different  dimension : " << d << " int node : " << _ran_dest << " _dim_size: " << _dim_size << endl;
+	      cout << "    different  dimension : " << d << " int node : " << _ran_dest << " _dim_size: " << _dim_size << endl;
     }
-    src = (int) (src / gK);
-    dest = (int) (dest / gK);
+
+    //src = (int) (src / gK);
+    //dest = (int) (dest / gK);
   }
   
   if (debug) cout << " intermediate destination NODE: " << _ran_dest << endl;

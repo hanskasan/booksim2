@@ -14,7 +14,8 @@ Nan Jiang, Daniel U. Becker, George Michelogiannakis, James Balfour, Brian Towle
 
 ---
 
-Booksim_Hans
+## Booksim_Hans
 These files are edited:
 1. flatfly_onchip.cpp
+    a. Fixed find_ran_intm: Add conditions when the source and destination routers are located at the same row and column.
 2. 
