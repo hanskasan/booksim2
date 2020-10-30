@@ -148,6 +148,13 @@ public:
   virtual int dest(int source);
 };
 
+// HANS: Adversarial traffic for 1D flattened butterfly
+class BadFlatflyTrafficPattern : public DigitPermutationTrafficPattern {
+public:
+  BadFlatflyTrafficPattern(int nodes, int k, int n);
+  virtual int dest(int source);
+};
+
 class BadPermDFlyTrafficPattern : public DigitPermutationTrafficPattern {
 public:
   BadPermDFlyTrafficPattern(int nodes, int k, int n);

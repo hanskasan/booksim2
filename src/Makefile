@@ -26,7 +26,7 @@
 
 LEX = flex
 YACC   = bison -y
-DEFINE = 
+DEFINE = -D SINGLE_CYCLE 
 INCPATH = -I. -Iarbiters -Iallocators -Irouters -Inetworks -Ipower
 CPPFLAGS += -Wall $(INCPATH) $(DEFINE)
 CPPFLAGS += -O3

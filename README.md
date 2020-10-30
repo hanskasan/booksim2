@@ -15,9 +15,9 @@ Nan Jiang, Daniel U. Becker, George Michelogiannakis, James Balfour, Brian Towle
 ---
 
 ## Booksim_Hans
-Hans Kasan -- CSNL KAIST
+Hans Kasan - CSNL KAIST
 
-These files are edited:
+These files are modified:
 1. flatfly_onchip.cpp
     - Fixed find_ran_intm: Add conditions when the source and destination routers are located at the same row and column.
     - 

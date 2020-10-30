@@ -102,6 +102,33 @@ TrafficPattern * TrafficPattern::New(string const & pattern, int nodes,
     result = new AsymmetricTrafficPattern(nodes);
   } else if(pattern_name == "taper64") {
     result = new Taper64TrafficPattern(nodes);
+  } else if (pattern_name == "bad_flatfly") { // HANS: Adversarial traffic for 1D flattened butterfly
+    bool missing_params = false;
+    int k = -1;
+    if(params.size() < 1) {
+      if(config) {
+        k = config->GetInt("k");
+      } else {
+        missing_params = true;
+      }
+    } else {
+      k = atoi(params[0].c_str());
+    }
+    int n = -1;
+    if(params.size() < 2) {
+      if(config) {
+        n = config->GetInt("n");
+      } else {
+        missing_params = true;
+      }
+    } else {
+      n = atoi(params[1].c_str());
+    }
+    if(missing_params) {
+      cout << "Error: Missing parameters for flattened butterfly bad permutation traffic pattern: " << pattern << endl;
+      exit(-1);
+    }
+    result = new BadFlatflyTrafficPattern(nodes, k, n);
   } else if(pattern_name == "bad_dragon") {
     bool missing_params = false;
     int k = -1;
@@ -455,6 +482,25 @@ int Taper64TrafficPattern::dest(int source)
   } else {
     return RandomInt(_nodes - 1);
   }
+}
+
+// HANS: Adversarial traffic for 1D flattened butterfly
+BadFlatflyTrafficPattern::BadFlatflyTrafficPattern(int nodes, int k, int n)
+  : DigitPermutationTrafficPattern(nodes, k, n, 1)
+{
+  assert(n == 1); // This is not a worst-case traffic for multi-dimensional flattened butterfly
+}
+
+int BadFlatflyTrafficPattern::dest(int source)
+{
+  assert((source >= 0) && (source < _nodes));
+  assert((_nodes % _k) == 0);
+
+  int const c = _nodes/_k;
+  int const src_router = source/c;
+  int const dest_router = (src_router + 1) % _k;
+
+  return ((dest_router * c) + RandomInt(c - 1));
 }
 
 BadPermDFlyTrafficPattern::BadPermDFlyTrafficPattern(int nodes, int k, int n)
