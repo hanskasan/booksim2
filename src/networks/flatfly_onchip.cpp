@@ -84,11 +84,11 @@ void FlatFlyOnChip::_ComputeSize( const Configuration &config )
   //how many routers in the x or y direction
   _xcount = config.GetInt("x");
   _ycount = config.GetInt("y");
-  assert(_xcount == _ycount);
+  //assert(_xcount == _ycount);
   //configuration of hohw many clients in X and Y per router
   _xrouter = config.GetInt("xr");
   _yrouter = config.GetInt("yr");
-  assert(_xrouter == _yrouter);
+  //assert(_xrouter == _yrouter);
   gK = _k; 
   gN = _n;
   gC = _c;
