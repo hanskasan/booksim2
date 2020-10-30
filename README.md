@@ -15,7 +15,11 @@ Nan Jiang, Daniel U. Becker, George Michelogiannakis, James Balfour, Brian Towle
 ---
 
 ## Booksim_Hans
+Hans Kasan -- CSNL KAIST
+
 These files are edited:
 1. flatfly_onchip.cpp
-    a. Fixed find_ran_intm: Add conditions when the source and destination routers are located at the same row and column.
-2. 
+    - Fixed find_ran_intm: Add conditions when the source and destination routers are located at the same row and column.
+    - 
+2. iq_router.cpp
+    - Add SINGLE_CYCLE macro to use single-cycle router.
