@@ -22,6 +22,6 @@ These files are modified:
     - Fixed find_ran_intm: Add conditions when the source and destination routers are located at the same row and column.
     - Removed unnecessary assertions: (_xcount == _ycount) and (_xrouter = _yrouter)
 2. iq_router.cpp
-    - Add SINGLE_CYCLE macro to use single-cycle router.
+    - Added SINGLE_CYCLE macro to use single-cycle router.
 3. traffic.cpp
-    - Add bad_flatfly - worst case traffic for 1D flattened butterfly.
+    - Added bad_flatfly - worst case traffic for 1D flattened butterfly.
