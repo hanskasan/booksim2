@@ -30,7 +30,7 @@
 
 #include "network.hpp"
 
-#include "routefunc.hpp"
+#include "../routefunc.hpp"
 #include <cassert>
 
 

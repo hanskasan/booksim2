@@ -32,14 +32,14 @@
 #include <queue>
 #include <vector>
 
-#include "module.hpp"
+#include "../module.hpp"
 #include "router.hpp"
-#include "buffer.hpp"
-#include "vc.hpp"
-#include "prio_arb.hpp"
-#include "routefunc.hpp"
-#include "outputset.hpp"
-#include "pipefifo.hpp"
+#include "../buffer.hpp"
+#include "../vc.hpp"
+#include "../arbiters/prio_arb.hpp"
+#include "../routefunc.hpp"
+#include "../outputset.hpp"
+#include "../pipefifo.hpp"
 
 class EventNextVCState : public Module {
 public:

@@ -35,7 +35,7 @@
 
 #include "module.hpp"
 #include "config_utils.hpp"
-#include "network.hpp"
+#include "networks/network.hpp"
 #include "flit.hpp"
 #include "buffer_state.hpp"
 #include "stats.hpp"

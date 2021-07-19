@@ -38,7 +38,7 @@
  *which are replaced by iq rotuer and event router in the present form
  */
 
-#include "booksim.hpp"
+#include "../booksim.hpp"
 #include <iostream>
 #include <cassert>
 #include "router.hpp"

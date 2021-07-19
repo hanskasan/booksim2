@@ -32,8 +32,8 @@
 #include <cassert>
 
 #include "event_router.hpp"
-#include "stats.hpp"
-#include "globals.hpp"
+#include "../stats.hpp"
+#include "../globals.hpp"
 
 EventRouter::EventRouter( const Configuration& config,
 		    Module *parent, const string & name, int id,

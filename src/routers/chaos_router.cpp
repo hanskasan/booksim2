@@ -25,15 +25,15 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "booksim.hpp"
+#include "../booksim.hpp"
 #include <string>
 #include <sstream>
 #include <iostream>
 #include <cstdlib>
 
 #include "chaos_router.hpp"
-#include "random_utils.hpp"
-#include "globals.hpp"
+#include "../random_utils.hpp"
+#include "../globals.hpp"
 
 ChaosRouter::ChaosRouter( const Configuration& config,
 		    Module *parent, const string & name, int id,

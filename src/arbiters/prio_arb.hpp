@@ -30,8 +30,8 @@
 
 #include <list>
 
-#include "module.hpp"
-#include "config_utils.hpp"
+#include "../module.hpp"
+#include "../config_utils.hpp"
 
 class PriorityArbiter : public Module {
   int _rr_ptr;

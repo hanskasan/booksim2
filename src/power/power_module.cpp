@@ -26,10 +26,10 @@
 */
 
 #include "power_module.hpp"
-#include "booksim_config.hpp"
+#include "../booksim_config.hpp"
 #include "buffer_monitor.hpp"
 #include "switch_monitor.hpp"
-#include "iq_router.hpp"
+#include "../routers/iq_router.hpp"
 
 Power_Module::Power_Module(Network * n , const Configuration &config)
   : Module( 0, "power_module" ){

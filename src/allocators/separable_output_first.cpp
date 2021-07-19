@@ -33,7 +33,7 @@
 
 #include "separable_output_first.hpp"
 
-#include "booksim.hpp"
+#include "../booksim.hpp"
 #include "arbiter.hpp"
 
 #include <vector>

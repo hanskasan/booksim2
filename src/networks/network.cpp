@@ -35,7 +35,7 @@
 #include <cassert>
 #include <sstream>
 
-#include "booksim.hpp"
+#include "../booksim.hpp"
 #include "network.hpp"
 
 #include "kncube.hpp"

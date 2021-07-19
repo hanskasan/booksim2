@@ -44,13 +44,13 @@
 ////////////////////////////////////////////////////////////////////////
 
 
-#include "booksim.hpp"
+#include "../booksim.hpp"
 #include <vector>
 #include <sstream>
 #include <cmath>
 
 #include "fattree.hpp"
-#include "misc_utils.hpp"
+#include "../misc_utils.hpp"
 
 
  //#define FATTREE_DEBUG
