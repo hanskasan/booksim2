@@ -265,7 +265,10 @@ protected:
   virtual void _RetireFlit( Flit *f, int dest );
 
   void _Inject();
+
+#ifdef BOOKSIM_STANDALONE
   void _Step( );
+#endif
 
   bool _PacketsOutstanding( ) const;
   
@@ -307,6 +310,10 @@ public:
 
   inline int getTime() { return _time;}
   Stats * getStats(const string & name) { return _stats[name]; }
+
+#ifndef BOOKSIM_STANDALONE
+  void _Step( );
+#endif
 
 };
 

@@ -3,3 +3,12 @@
 ._*
 .Apple*
 .DS_Store
+
+# SST Generated Files
+.deps/
+.libs/
+.dirstamp
+*.in
+*.am
+*.la
+*.lo
