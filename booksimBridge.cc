@@ -37,6 +37,9 @@ BookSimBridge::BookSimBridge(ComponentId_t cid, Params &params, int vns) :
     // Configure the links
     // For now give it a fake timebase.  Will give it the real timebase during init
 
+    // Only support 1 VN for now
+    assert(req_vns == 1);
+
     // Need to get the right port_name
     std::string port_name("rtr_port");
     if ( isAnonymous() ) {
@@ -48,17 +51,26 @@ BookSimBridge::BookSimBridge(ComponentId_t cid, Params &params, int vns) :
     output_timing = configureSelfLink(port_name + "_output_timing", "1GHz",
             new Event::Handler<BookSimBridge>(this,&BookSimBridge::handle_output));
 
+    // Get link bandwidth (HANS: Double-check with LinkControl)
+    bool found = false;
+    UnitAlgebra link_clock = params.find<UnitAlgebra>("booksim_link_clock", "1GHz", found); // Send 1 flit with 1GHz frequency
+    TimeConverter* tc = getTimeConverter(link_clock);
+    assert(tc);
+    output_timing->setDefaultTimeBase(tc);
+
     // Input and output buffers.  Not all of them can be set up now.
     // Only those that are sized based on req_vns can be intialized
     // now.  Others will wait until init when we find out the rest of
     // the VN usage.
     input_queues = new network_queue_t[req_vns];
 
-    // Need to wait to do output_queues, router_credits
+    // Instance the output queues
+    vn_remap_out = new output_queue_bundle_t*[req_vns];
+    output_queues = new output_queue_bundle_t[req_vns];
 
+    vn_remap_out[0] = &(output_queues[0]);
 
     // See if we need to set up a nid map
-    bool found = false;
     job_id = params.find<int>("job_id",-1,found);
     use_nid_map = params.find<bool>("use_nid_remap",false);
     if ( found ) {
@@ -93,6 +105,13 @@ BookSimBridge::BookSimBridge(ComponentId_t cid, Params &params, int vns) :
             use_nid_map = true;
         }
     }
+
+    // Register statistics
+    packet_latency = registerStatistic<uint64_t>("packet_latency");
+    send_bit_count = registerStatistic<uint64_t>("send_bit_count");
+    output_port_stalls = registerStatistic<uint64_t>("output_port_stalls");
+    idle_time = registerStatistic<uint64_t>("idle_time");
+    // recv_bit_count = registerStatistic<uint64_t>("recv_bit_count");
 }
 
 BookSimBridge::~BookSimBridge()
@@ -168,15 +187,26 @@ bool BookSimBridge::send(SimpleNetwork::Request* req, int vn) {
     output_queue_bundle_t& out_handle = *(vn_remap_out[0]);
 
     // Create a router event using id
+    // id will always be -1 (the value is initialized by PortControl in the Merlin implementation)    
+    // But the id is not needed for now, but this will be a problem when the "event->getTrustedSrc()" function is needed
     BookSimEvent* ev = new BookSimEvent(req, id);
+
+    // HANS: For debugging purpose, delete if not needed
+    //printf("Make new BookSimEvent with id: %d\n", id);
+
     // Fill in the number of flits
     ev->computeSizeInFlits(flit_size);
     int flits = ev->getSizeInFlits();
 
     ev->setInjectionTime(getCurrentSimTimeNano());
     out_handle.queue.push(ev);
+
+    // HANS: For debugging purpose, delete if not needed
+    printf("Ember pushes packets\n");
+
     if ( waiting && !have_packets ) {
-        output_timing->send(1,nullptr);
+        //output_timing->send(1,nullptr);
+        output_timing->send(nullptr);
         waiting = false;
     }
 
@@ -206,6 +236,10 @@ SST::Interfaces::SimpleNetwork::Request* BookSimBridge::recv(int vn) {
     SST::Interfaces::SimpleNetwork::Request* ret = event->takeRequest();
     if ( use_nid_map ) ret->dest = logical_nid;
     delete event;
+
+    printf("Successfully sent to NIC at: %ld from source: %d\n", getCurrentSimCycle(), ret->src);
+
+    // rtr_link->send(1, nullptr);
     
     return ret;
 
@@ -214,6 +248,10 @@ SST::Interfaces::SimpleNetwork::Request* BookSimBridge::recv(int vn) {
 // Handle event coming from BookSim
 void BookSimBridge::handle_input(Event* ev)
 {
+
+    // HANS: For debugging purpose, delete if not needed
+    //.printf("Handle input at booksimBridge\n");
+
     // Cast to BookSimEvent
     BookSimEvent* booksim_event = static_cast<BookSimEvent*>(ev);
 
@@ -236,7 +274,7 @@ void BookSimBridge::handle_input(Event* ev)
     }
 }
 
-// Handle event coming from the NIC
+// Control event to be sent to BookSim
 void BookSimBridge::handle_output(Event* ev)
 {
     // In the original linkControl code, round robin scheduling is done.
@@ -247,12 +285,20 @@ void BookSimBridge::handle_output(Event* ev)
     have_packets = false;
 
     if ( !output_queues[vn].queue.empty() ){
+        // For debugging purpose, delete if not needed
+        printf("Handle output at booksimBridge, found at: %ld\n", getCurrentSimCycle());
+
         have_packets = true;
         
         BookSimEvent* send_event = nullptr;
         send_event = output_queues[vn].queue.front();
+        int send_size = send_event->getSizeInFlits();
 
         output_queues[vn].queue.pop();
+
+        // Send an event to wake up again after this packet is sent
+        output_timing->send(nullptr);
+        //output_timing->send(send_size, nullptr);
         
         // Usage of output_timing is skipped
 
@@ -264,7 +310,7 @@ void BookSimBridge::handle_output(Event* ev)
             is_idle = false;
         }
 
-        rtr_link->send(send_event);
+        rtr_link->send(send_event);   
         last_recv_time = getCurrentSimCycle();
         sent++;
 
@@ -274,6 +320,9 @@ void BookSimBridge::handle_output(Event* ev)
             if ( !keep ) sendFunctor = nullptr;
         }
     } else {
+        // For debugging purpose, delete if not needed
+        printf("Handle output at booksimBridge, not found\n");
+
         // If there's nothing to send
         // Based on the original code, there are 2 possibilities: the output queues are empty or there's no enough room in the router buffers
         // However, since we are not dealing with credits when connecting with the traffic manager, the latter possibility can be ignored.

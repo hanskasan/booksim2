@@ -9,6 +9,7 @@ net_sim = sst.Component("booksim2", "booksim2")
 # to see parameter documentation
 params = {
         "booksim_clock" : "1GHz",
+        "num_motif_nodes" : 0,
         "topology" : "dragonfly",    
         "routing_function" : "min_adapt",
         "packet_size" : 1,

@@ -582,7 +582,11 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     _slowest_flit.resize(_classes, -1);
     _slowest_packet.resize(_classes, -1);
 
- 
+#ifndef BOOKSIM_STANDALONE
+    _sim_state = running;
+
+    _retired_pid.resize(_nodes);
+#endif
 
 }
 
@@ -642,6 +646,11 @@ TrafficManager::~TrafficManager( )
 
 void TrafficManager::_RetireFlit( Flit *f, int dest )
 {
+
+#ifndef BOOKSIM_STANDALONE
+    assert(_sim_state == running);
+#endif
+
     _deadlock_timer = 0;
 
     assert(_total_in_flight_flits[f->cl].count(f->id) > 0);
@@ -741,7 +750,11 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
         if(f != head) {
             head->Free();
         }
-    
+
+#ifndef BOOKSIM_STANDALONE
+        cout << "Retired by BookSim, pid: " << f->pid << " | dest: " << f->dest << endl;
+        _retired_pid[f->dest].push(f->pid);
+#endif
     }
   
     if(f->head && !f->tail) {
@@ -751,6 +764,7 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
     }
 }
 
+#ifdef BOOKSIM_STANDALONE
 int TrafficManager::_IssuePacket( int source, int cl )
 {
     int result = 0;
@@ -918,7 +932,119 @@ void TrafficManager::_GeneratePacket( int source, int stype,
         _partial_packets[source][cl].push_back( f );
     }
 }
+#endif
 
+#ifndef BOOKSIM_STANDALONE
+int TrafficManager::_GeneratePacketfromMotif( int source, int dest, int size, int cl )
+{
+    Flit::FlitType packet_type = Flit::ANY_TYPE;
+    int pid = _cur_pid++;
+    assert(_cur_pid);
+    int packet_destination = dest;
+    bool record = true; // Always true, because there is no warming-up and draining phase when using motif
+    bool watch = gWatchOut && (_packets_to_watch.count(pid) > 0);     
+    int time = _time;
+
+    if ((packet_destination <0) || (packet_destination >= _nodes)) {
+        ostringstream err;
+        err << "Incorrect packet destination " << packet_destination
+            << " for stype " << packet_type;
+        Error( err.str( ) );
+    }
+
+
+    int subnetwork = ((packet_type == Flit::ANY_TYPE) ? 
+                      RandomInt(_subnets-1) :
+                      _subnet[packet_type]);
+  
+    printf("GeneratePacketFromMotif: %d, %d, %d, %d\n", source, dest, size, cl);
+    
+    if ( watch ) { 
+        *gWatchOut << GetSimTime() << " | "
+                   << "node" << source << " | "
+                   << "Enqueuing packet " << pid
+                   << " at time " << time
+                   << "." << endl;
+    }
+
+    for ( int i = 0; i < size; ++i ) {
+        Flit * f  = Flit::New();
+        f->id     = _cur_id++;
+        assert(_cur_id);
+        f->pid    = pid;
+        f->watch  = watch | (gWatchOut && (_flits_to_watch.count(f->id) > 0));
+        f->watch = false;
+        f->subnetwork = subnetwork;
+        f->src    = source;
+        f->ctime  = time;
+        f->record = record;
+        f->cl     = cl;
+
+        _total_in_flight_flits[f->cl].insert(make_pair(f->id, f));
+        if(record) {
+            _measured_in_flight_flits[f->cl].insert(make_pair(f->id, f));
+        }
+    
+        if(gTrace){
+            cout<<"New Flit "<<f->src<<endl;
+        }
+        f->type = packet_type;
+
+        if ( i == 0 ) { // Head flit
+            f->head = true;
+            //packets are only generated to nodes smaller or equal to limit
+            f->dest = packet_destination;
+
+            // HANS: For debugging purpose
+            //f->watch = true;
+
+        } else {
+            f->head = false;
+            f->dest = -1;
+        }
+        switch( _pri_type ) {
+        case class_based:
+            f->pri = _class_priority[cl];
+            assert(f->pri >= 0);
+            break;
+        case age_based:
+            f->pri = numeric_limits<int>::max() - time;
+            assert(f->pri >= 0);
+            break;
+        case sequence_based:
+            f->pri = numeric_limits<int>::max() - _packet_seq_no[source];
+            assert(f->pri >= 0);
+            break;
+        default:
+            f->pri = 0;
+        }
+        if ( i == ( size - 1 ) ) { // Tail flit
+            f->tail = true;
+        } else {
+            f->tail = false;
+        }
+    
+        f->vc  = -1;
+
+        if ( f->watch ) { 
+            *gWatchOut << GetSimTime() << " | "
+                       << "node" << source << " | "
+                       << "Enqueuing flit " << f->id
+                       << " (packet " << f->pid
+                       << ") at time " << time
+                       << "." << endl;
+        }
+
+        _partial_packets[source][cl].push_back( f );
+    }
+
+    printf("GeneratePacketFromMotif with PID: %d\n", pid);
+
+    return pid;
+}
+#endif
+
+#ifdef BOOKSIM_STANDALONE
 void TrafficManager::_Inject(){
 
     for ( int input = 0; input < _nodes; ++input ) {
@@ -950,6 +1076,16 @@ void TrafficManager::_Inject(){
         }
     }
 }
+#endif
+
+#ifndef BOOKSIM_STANDALONE
+int TrafficManager::_InjectMotif( int source, int dest, int size ){
+    // _qtime is not used because we don't use the (_partial_packets[input][c]) condition to determine whether the packet should be injected to the network.
+    // When to / not to inject is solely determined by the Motif
+    printf("WKWK4\n");
+    return _GeneratePacketfromMotif( source, dest, size, 0 ); // All motif-generated packets are assigned to class 0
+}
+#endif
 
 void TrafficManager::_Step( )
 {
@@ -1003,10 +1139,12 @@ void TrafficManager::_Step( )
         }
         _net[subnet]->ReadInputs( );
     }
-  
+
+#ifdef BOOKSIM_STANDALONE
     if ( !_empty_network ) {
         _Inject();
     }
+#endif
 
     for(int subnet = 0; subnet < _subnets; ++subnet) {
 
@@ -1967,7 +2105,6 @@ void TrafficManager::UpdateStats() {
     if(_free_credits_out) *_free_credits_out << flush;
     if(_max_credits_out) *_max_credits_out << flush;
 #endif
-
 }
 
 void TrafficManager::DisplayStats(ostream & os) const {
@@ -2289,3 +2426,32 @@ double TrafficManager::_GetAveragePacketSize(int cl) const
     }
     return (double)sum / (double)(_packet_size_max_val[cl] + 1);
 }
+
+#ifndef BOOKSIM_STANDALONE
+bool TrafficManager::IsRetiredPidEmpty(int dest) const
+{
+    assert((dest >= 0) && (dest < _nodes));
+    
+    return _retired_pid[dest].empty();
+}
+
+bool TrafficManager::IsAllRetiredPidEmpty( ) const
+{
+    for (int iter_node; iter_node < _nodes; iter_node++){
+        if (!IsRetiredPidEmpty(iter_node)){
+            return false;
+        }
+    }
+
+    return true;
+}
+
+int TrafficManager::GetRetiredPid(int dest)
+{
+    int pid = _retired_pid[dest].front();
+    _retired_pid[dest].pop();
+
+    return pid;
+}
+
+#endif

@@ -259,21 +259,31 @@ protected:
   ostream * _max_credits_out;
 #endif
 
+#ifndef BOOKSIM_STANDALONE
+  vector<queue<int>> _retired_pid;
+#endif
+
   // ============ Internal methods ============ 
 protected:
 
   virtual void _RetireFlit( Flit *f, int dest );
 
-  void _Inject();
-
 #ifdef BOOKSIM_STANDALONE
+  void _Inject();
   void _Step( );
 #endif
 
+#ifdef BOOKSIM_STANDALONE
   bool _PacketsOutstanding( ) const;
+#endif
   
+#ifdef BOOKSIM_STANDALONE
   virtual int  _IssuePacket( int source, int cl );
   void _GeneratePacket( int source, int size, int cl, int time );
+#endif
+#ifndef BOOKSIM_STANDALONE
+  int _GeneratePacketfromMotif( int source, int dest, int size, int c );
+#endif
 
   virtual void _ClearStats( );
 
@@ -312,7 +322,14 @@ public:
   Stats * getStats(const string & name) { return _stats[name]; }
 
 #ifndef BOOKSIM_STANDALONE
+  bool _PacketsOutstanding( ) const;
   void _Step( );
+  int _InjectMotif ( int source, int dest, int size );
+
+  bool IsRetiredPidEmpty    (int dest) const;
+  bool IsAllRetiredPidEmpty () const;
+  int  GetRetiredPid        (int dest);
+
 #endif
 
 };

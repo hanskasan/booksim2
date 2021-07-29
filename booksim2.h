@@ -15,6 +15,10 @@
 #include "src/trafficmanager.hpp"
 #include "src/booksim_config.hpp"
 
+#include "src/globals.hpp"
+
+#include <map>
+
 namespace SST {
 namespace BookSim {
 
@@ -58,7 +62,7 @@ public:
     SST_ELI_DOCUMENT_STATISTICS( )
 
     SST_ELI_DOCUMENT_SUBCOMPONENT_SLOTS( 
-        {"booksim_interface", "Interfaces between BookSimBridge and BookSim's traffic manager", "SST::BookSim::BookSimInterface"}
+        {"booksim_interface", "Interfaces between BookSimBridge and BookSim's traffic manager", "SST::BookSim::BookSimInterface_Base"}
     )
 
     // CLASS MEMBERS
@@ -68,7 +72,15 @@ public:
     // Destructor
     ~booksim2();
 
-    // Run a single simulation step
+    // Inject motif to BookSim
+    void Inject(BookSimEvent* event);
+
+    // To notify BookSim that there is an incoming event, thus activate the clock if it was paused
+    // Refer to hr_router::notifyEvent() for more details
+    bool IsRequestAlarm();
+    void WakeBookSim();
+
+    // Run a single BookSim step
     bool BabyStep(Cycle_t cycle);
 
 private:
@@ -76,10 +88,14 @@ private:
     vector<Network*>    _net;
     int                 _subnets;
     int                 _num_motif_nodes;
+    bool                _is_request_alarm;
 
-    Clock::Handler<booksim2>* clock_handler;
+    TimeConverter* _booksim_tc;
+    Clock::Handler<booksim2>* _clock_handler;
 
     BookSimInterface_Base* _interface;
+
+    map<int, BookSimEvent *> _injected_events;
 
     //void handle_new_packets(Event* ev);
 
@@ -99,6 +115,7 @@ public:
     BookSimInterface_Base(SST::ComponentId_t id) : SubComponent(id) {}
     virtual ~BookSimInterface_Base() {}
 
+    virtual void send(int dest_node, BookSimEvent* event) {}
 };
 
 // Events to be recognized by BookSim and its interfaces (BookSimBridge and BookSimInterface)
@@ -124,6 +141,8 @@ public:
     inline SimTime_t getInjectionTime(void) const { return injectionTime; }
 
     inline void computeSizeInFlits(int flit_size ) {size_in_flits = (request->size_in_bits + flit_size - 1) / flit_size; }
+    inline int getSrc() { return request->src; }
+    inline int getDest() { return request->dest; }
     inline int getSizeInFlits() { return size_in_flits; }
     inline int getSizeInBits() { return request->size_in_bits; }
 

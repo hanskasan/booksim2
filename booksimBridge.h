@@ -65,7 +65,7 @@ public:
     )
 
     SST_ELI_DOCUMENT_PORTS(
-        {"rtr_port", "Port that connects to router", { "merlin.RtrEvent", "merlin.credit_event", "" } },
+        {"rtr_port", "Port that connects to router", { "booksim2.booksimEvent" } },
     )
 
 

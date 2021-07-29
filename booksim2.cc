@@ -61,8 +61,14 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
 
     // Override configuration with SST parameters
     bool found;
-    std::string temp_rf = params.find<string>("routing_function", "valiant", found); // Consider changing the default value to none
+    std::string temp_rf = params.find<string>("routing_function", "none", found);
     config.Assign("routing_function", temp_rf);
+
+    int k = params.find<int>("k", 0, found);
+    config.Assign("k", k);
+
+    int n = params.find<int>("n", 0, found);
+    config.Assign("n", n);
 
     InitializeRoutingMap( config );
 
@@ -93,10 +99,10 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
     // Create BookSimInterface instance that is derived from BookSimInterface_Base
     _num_motif_nodes = params.find<int>("num_motif_nodes", -1);
     
-    assert(_num_motif_nodes > 0); // Must be a positive value
+    assert(_num_motif_nodes >= 0); // Must be a positive value
 
     _interface = (BookSimInterface_Base*)loadUserSubComponent<SST::BookSim::BookSimInterface_Base>
-        ("booksim_interface", ComponentInfo::SHARE_NONE, this, _num_motif_nodes);
+        ("booksim_interface", ComponentInfo::SHARE_PORTS, this, _num_motif_nodes);
 
     // Build traffic manager
     assert(trafficManager == NULL);
@@ -110,13 +116,16 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
     //sst_assert(nic2booksim_link, CALL_INFO, -1, "Error in %s: Link configuration failed\n", getName().c_str());
 
     // SST should not finish until BookSim is done
-    registerAsPrimaryComponent();
-    primaryComponentDoNotEndSim();
+    //registerAsPrimaryComponent();
+    //primaryComponentDoNotEndSim();
 
     // BookSim clock supplied from SST
     std::string booksim_clock = params.find<string>("booksim_clock", "1GHz", found);
-    clock_handler = new Clock::Handler<booksim2>(this, &booksim2::BabyStep);
-    registerClock("1GHz", clock_handler);
+    _clock_handler = new Clock::Handler<booksim2>(this, &booksim2::BabyStep);
+    _booksim_tc = registerClock(booksim_clock, _clock_handler);
+
+    // Clock is initially running, so don't need to wake BookSim up
+    _is_request_alarm = false;
 }
 
 booksim2::~booksim2()
@@ -129,26 +138,69 @@ booksim2::~booksim2()
   trafficManager = NULL;
 }
 
+void booksim2::Inject(BookSimEvent* event)
+{
+  int src = event->getSrc();
+  int dest = event->getDest();
+  int size = event->getSizeInFlits();
+
+  // Sanity checks
+  assert((src >= 0) && (src < _num_motif_nodes));
+  assert((dest >= 0) && (dest < _num_motif_nodes));
+  assert(size >= 0);
+
+  int pid = trafficManager->_InjectMotif(src, dest, size);
+
+  _injected_events.insert(make_pair(pid, event));
+
+  printf("BookSim inject with pid: %d at time: %ld\n", pid, getCurrentSimCycle());
+}
+
+void booksim2::WakeBookSim()
+{
+    _is_request_alarm = false;
+    Cycle_t next_cycle = reregisterClock( _booksim_tc, _clock_handler );
+}
+
+bool booksim2::IsRequestAlarm()
+{
+  return _is_request_alarm;
+}
+
+
 bool booksim2::BabyStep(Cycle_t cycle)
 {
     trafficManager->_Step();
 
-    if (GetSimTime() == 100){
+    // FOR DEBUGGING PURPOSE
+    //printf("BabyStep at: %d\n", getCurrentSimCycle());
 
-      // Things to do at the end of the simulation
-      for (int i = 0; i < _subnets; ++i) {
-        ///Power analysis
-        if(config.GetInt("sim_power") > 0){
-          Power_Module pnet(_net[i], config);
-          pnet.run();
-        }
+    // Send event back to NIC
+    for (int iter_node = 0; iter_node < _num_motif_nodes; iter_node++){
+      if (!trafficManager->IsRetiredPidEmpty(iter_node)){
+        int pid = trafficManager->GetRetiredPid(iter_node);
+
+        map<int, BookSimEvent *>::iterator iter_map = _injected_events.find(pid);
+        BookSimEvent* event = iter_map->second;
+        assert(event->getDest() == iter_node);
+
+        // Tell BookSimInterface to send this event back to NIC
+        _interface->send(iter_node, event);
+
+        _injected_events.erase(iter_map);
       }
-
-      // Tell SST that it's OK to end the simulation
-      primaryComponentOKToEndSim();
-      return true;
     }
 
-    // Return false to indicate the clock handler should not be disabled
-    return false;
+    // Check if there is any outstanding packet in BookSim or events to be injected to the NIC
+    if (trafficManager->_PacketsOutstanding() || !trafficManager->IsAllRetiredPidEmpty()){
+      // Return false to indicate the clock handler should not be disabled
+      _is_request_alarm = false;
+      return false;
+    } else {
+      // Sanity check
+      assert(_injected_events.empty());
+
+      _is_request_alarm = true;
+      return true;
+    }
 }
