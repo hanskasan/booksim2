@@ -133,11 +133,31 @@ void BookSimBridge::setup()
 
 void BookSimBridge::init(unsigned int phase)
 {
-    network_initialized = true;
+    Event* ev;
+    BookSimInitEvent* init_ev;
 
-    // Need to start the timer for links that never send data
-    idle_start = Simulation::getSimulation()->getCurrentSimCycle();
-    is_idle = true;
+    // HANS: FIXME: This should be assigned through init signal sent by port control, who reads the configuration file
+    flit_size = 64; // in bytes
+
+    switch ( phase ) {
+    case 0:
+        network_initialized = true;
+
+        // Need to start the timer for links that never send data
+        idle_start = Simulation::getSimulation()->getCurrentSimCycle();
+        is_idle = true;
+        break;
+
+    case 1:
+        ev = rtr_link->recvUntimedData();
+        init_ev = static_cast<BookSimInitEvent*>(ev);
+
+        id = init_ev->getIntVal();
+        break;
+
+    default:
+        break;
+    }
 }
 
 void BookSimBridge::complete(unsigned int phase)
@@ -198,11 +218,11 @@ bool BookSimBridge::send(SimpleNetwork::Request* req, int vn) {
     ev->computeSizeInFlits(flit_size);
     int flits = ev->getSizeInFlits();
 
+    // HANS: For debugging
+    //printf("Make new BookSimEvent with id: %d, size: %d, flit_size: %d\n", id, flits, flit_size);
+
     ev->setInjectionTime(getCurrentSimTimeNano());
     out_handle.queue.push(ev);
-
-    // HANS: For debugging purpose, delete if not needed
-    printf("Ember pushes packets\n");
 
     if ( waiting && !have_packets ) {
         //output_timing->send(1,nullptr);
@@ -237,7 +257,7 @@ SST::Interfaces::SimpleNetwork::Request* BookSimBridge::recv(int vn) {
     if ( use_nid_map ) ret->dest = logical_nid;
     delete event;
 
-    printf("Successfully sent to NIC at: %ld from source: %d\n", getCurrentSimCycle(), ret->src);
+    //printf("Successfully sent to NIC at: %ld from source: %d, head: %d, tail: %d\n", getCurrentSimCycle(), ret->src, ret->head, ret->tail);
 
     // rtr_link->send(1, nullptr);
     
@@ -250,7 +270,7 @@ void BookSimBridge::handle_input(Event* ev)
 {
 
     // HANS: For debugging purpose, delete if not needed
-    //.printf("Handle input at booksimBridge\n");
+    //printf("Handle input at booksimBridge at time: %ld\n", getCurrentSimCycle());
 
     // Cast to BookSimEvent
     BookSimEvent* booksim_event = static_cast<BookSimEvent*>(ev);
@@ -286,7 +306,7 @@ void BookSimBridge::handle_output(Event* ev)
 
     if ( !output_queues[vn].queue.empty() ){
         // For debugging purpose, delete if not needed
-        printf("Handle output at booksimBridge, found at: %ld\n", getCurrentSimCycle());
+        //printf("Handle output at booksimBridge, found at: %ld\n", getCurrentSimCycle());
 
         have_packets = true;
         
@@ -321,7 +341,7 @@ void BookSimBridge::handle_output(Event* ev)
         }
     } else {
         // For debugging purpose, delete if not needed
-        printf("Handle output at booksimBridge, not found\n");
+        //printf("Handle output at booksimBridge, not found\n");
 
         // If there's nothing to send
         // Based on the original code, there are 2 possibilities: the output queues are empty or there's no enough room in the router buffers

@@ -63,7 +63,11 @@
  /* the current traffic manager instance */
 TrafficManager * trafficManager = NULL;
 
+//#ifdef BOOKSIM_STANDALONE
 int GetSimTime() {
+// #else
+// uint64_t GetSimTime() {
+// #endif
   return trafficManager->getTime();
 }
 

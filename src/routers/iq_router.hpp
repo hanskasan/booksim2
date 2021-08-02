@@ -69,6 +69,7 @@ class IQRouter : public Router {
   
   map<int, Flit *> _in_queue_flits;
 
+// #ifdef BOOKSIM_STANDALONE
   deque<pair<int, pair<Credit *, int> > > _proc_credits;
 
   deque<pair<int, pair<int, int> > > _route_vcs;
@@ -77,6 +78,16 @@ class IQRouter : public Router {
   deque<pair<int, pair<pair<int, int>, int> > > _sw_alloc_vcs;
 
   deque<pair<int, pair<Flit *, pair<int, int> > > > _crossbar_flits;
+// #else
+//   deque<pair<uint64_t, pair<Credit *, int> > > _proc_credits;
+
+//   deque<pair<uint64_t, pair<int, int> > > _route_vcs;
+//   deque<pair<uint64_t, pair<pair<int, int>, int> > > _vc_alloc_vcs;  
+//   deque<pair<uint64_t, pair<pair<int, int>, int> > > _sw_hold_vcs;
+//   deque<pair<uint64_t, pair<pair<int, int>, int> > > _sw_alloc_vcs;
+
+//   deque<pair<uint64_t, pair<Flit *, pair<int, int> > > > _crossbar_flits;
+// #endif
 
   map<int, Credit *> _out_queue_credits;
 
@@ -178,6 +189,10 @@ public:
   SwitchMonitor const * const GetSwitchMonitor() const {return _switchMonitor;}
   BufferMonitor const * const GetBufferMonitor() const {return _bufferMonitor;}
 
+  // HANS: Additional functions
+  virtual int GetUsedCreditAvg(int o) const;
+  virtual int GetInFlight(int o) const;
+  virtual int GetInFlightAvg(int o) const;
 };
 
 #endif

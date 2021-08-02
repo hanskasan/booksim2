@@ -33,7 +33,11 @@
 
 /*all declared in main.cpp*/
 
+//#ifdef BOOKSIM_STANDALONE
 int GetSimTime();
+// #else
+// uint64_t GetSimTime();
+// #endif
 
 class Stats;
 Stats * GetStats(const std::string & name);

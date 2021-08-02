@@ -80,6 +80,10 @@ void Flit::Reset()
   intm =-1;
   ph = -1;
   data = 0;
+
+  // HANS: Additional entries
+  min = -1;
+  force_min = false;
 }  
 
 Flit * Flit::New() {

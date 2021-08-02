@@ -88,6 +88,9 @@ protected:
   vector<int> _crossbar_conflict_stalls;
 #endif
 
+  // Additional variables
+  mutable vector<vector<queue<int> > > _inflight_vect;
+
   virtual void _InternalStep() = 0;
 
 public:
@@ -197,6 +200,12 @@ public:
 
   inline int NumInputs() const {return _inputs;}
   inline int NumOutputs() const {return _outputs;}
+
+  // HANS: Additional functions
+  virtual int GetUsedCreditAvg(int o) const = 0;
+
+  virtual int GetInFlight(int output) const = 0;
+  virtual int GetInFlightAvg(int output) const = 0;
 };
 
 #endif

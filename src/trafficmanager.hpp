@@ -128,8 +128,13 @@ protected:
 
   // ============ deadlock ==========
 
+#ifdef BOOKSIM_STANDALONE
   int _deadlock_timer;
   int _deadlock_warn_timeout;
+#else
+  uint64_t _deadlock_timer;
+  uint64_t _deadlock_warn_timeout;
+#endif
 
   // ============ request & replies ==========================
 
@@ -231,7 +236,11 @@ protected:
 
   int _cur_id;
   int _cur_pid;
+//#ifdef BOOKSIM_STANDALONE
   int _time;
+// #else
+//   uint64_t _time;
+// #endif
 
   set<int> _flits_to_watch;
   set<int> _packets_to_watch;
@@ -318,7 +327,14 @@ public:
   virtual void DisplayOverallStats( ostream & os = cout ) const ;
   virtual void DisplayOverallStatsCSV( ostream & os = cout ) const ;
 
-  inline int getTime() { return _time;}
+//#ifdef BOOKSIM_STANDALONE
+  inline int getTime() { 
+    assert(_time >= 0); // Make sure that this value is not negative due to overflow
+    return _time;
+  }
+//#else
+  //inline uint64_t getTime() { return _time;}
+//#endif
   Stats * getStats(const string & name) { return _stats[name]; }
 
 #ifndef BOOKSIM_STANDALONE

@@ -96,7 +96,11 @@ void VC::AddFlit( Flit *f )
     
   // update flit priority before adding to VC buffer
   if(_pri_type == local_age_based) {
+//#ifdef BOOKSIM_STANDALONE
     f->pri = numeric_limits<int>::max() - GetSimTime();
+// #else
+//     f->pri = numeric_limits<uint64_t>::max() - GetSimTime();
+// #endif
     assert(f->pri >= 0);
   } else if(_pri_type == hop_count_based) {
     f->pri = f->hops;

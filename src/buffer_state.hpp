@@ -130,7 +130,11 @@ class BufferState : public Module {
     int _vcs;
     vector<int> _occupancy_limit;
     vector<int> _round_trip_time;
+//#ifdef BOOKSIM_STANDALONE
     vector<queue<int> > _flit_sent_time;
+// #else
+//     vector<queue<uint64_t> > _flit_sent_time;
+// #endif
     int _min_latency;
     int _total_mapped_size;
     int _aging_scale;

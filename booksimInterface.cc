@@ -26,7 +26,7 @@ BookSimInterface::BookSimInterface(ComponentId_t id, Params& params, booksim2* p
     // Resize vector of queue of BookSimEvent: bypassing BookSim
     //_event_vect.resize(_num_motif_nodes);
 
-    // CAUTION: Configuraiton parameter is not read from emberLoadBookSim yet. Fixed the parameter passing in emberLoadBookSim for this to work
+    // CAUTION: Configuration parameter is not read from emberLoadBookSim yet. Fixed the parameter passing in emberLoadBookSim for this to work
 
     // BookSimInterface clock supplied from SST
     bool found;
@@ -69,13 +69,26 @@ BookSimInterface::~BookSimInterface()
     _num_motif_nodes = -1;
 }
 
+void BookSimInterface::init(unsigned int phase)
+{
+    switch ( phase ) {
+    case 0:
+        for (int iter_node = 0; iter_node < _num_motif_nodes; iter_node++){
+            BookSimInitEvent* init_event = new BookSimInitEvent(iter_node);
+            _booksim_link_vect[iter_node]->sendInitData(init_event);
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
 // From BookSimBridge to BookSim
 void BookSimInterface::handle_input(Event* ev)
 {
     // Write down what to do when there are new packets coming for the traffic manager
     // Can refer to PortControl::handle_input_n2r at portControl.cc
-
-    printf("IsRequestAlarm: %d\n", _parent->IsRequestAlarm());
 
     // Wake BookSim up if needed
     // Refer to PortControl::handle_input_n2r -> parent->getRequestNotifyOnEvent() for more details
@@ -87,10 +100,10 @@ void BookSimInterface::handle_input(Event* ev)
     BookSimEvent* booksim_event = static_cast<BookSimEvent*>(ev);
 
     // Inject packet to BookSim
-    printf("Inject\n");
     _parent->Inject(booksim_event);
 
-    printf("Handle input at booksimInterface with source node: %d\n", booksim_event->getSrc());
+    // HANS: For debugging purpose, delete if not needed
+    //printf("Handle input at booksimInterface with source node: %d, at time: %ld\n", booksim_event->getSrc(), getCurrentSimCycle());
 
     // For debugging interface: bypassing BookSim
     //_event_vect[booksim_event->getDest()].push(booksim_event);

@@ -70,7 +70,11 @@ protected:
   int _delay;
   T * _input;
   T * _output;
+//#ifdef BOOKSIM_STANDALONE
   queue<pair<int, T *> > _wait_queue;
+// #else
+//   queue<pair<uint64_t, T *> > _wait_queue;
+// #endif
 
 };
 
@@ -111,8 +115,13 @@ void Channel<T>::WriteOutputs() {
   if(_wait_queue.empty()) {
     return;
   }
+//#ifdef BOOKSIM_STANDALONE
   pair<int, T *> const & item = _wait_queue.front();
   int const & time = item.first;
+// #else
+//   pair<uint64_t, T *> const & item = _wait_queue.front();
+//   uint64_t const & time = item.first;
+// #endif
   if(GetSimTime() < time) {
     return;
   }

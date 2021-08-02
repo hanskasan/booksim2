@@ -682,10 +682,17 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
     if((_slowest_flit[f->cl] < 0) ||
        (_flat_stats[f->cl]->Max() < (f->atime - f->itime)))
         _slowest_flit[f->cl] = f->id;
+#ifdef BOOKSIM_STANDALONE
     _flat_stats[f->cl]->AddSample( f->atime - f->itime);
     if(_pair_stats){
         _pair_flat[f->cl][f->src*_nodes+dest]->AddSample( f->atime - f->itime );
     }
+#else
+    _flat_stats[f->cl]->AddSample( (int)(f->atime - f->itime) );
+    if(_pair_stats){
+        _pair_flat[f->cl][f->src*_nodes+dest]->AddSample( (int)(f->atime - f->itime) );
+    }
+#endif
       
     if ( f->tail ) {
         Flit * head;
@@ -710,6 +717,11 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
                        << ", dest = " << head->dest
                        << ")." << endl;
         }
+
+#ifndef BOOKSIM_STANDALONE
+        //cout << "Retired by BookSim, pid: " << f->pid << " | src: " << head->src << " | dest: " << head->dest << " | plat: " << f->atime - head->ctime << endl;
+        _retired_pid[head->dest].push(f->pid);
+#endif
 
         //code the source of request, look carefully, its tricky ;)
         if (f->type == Flit::READ_REQUEST || f->type == Flit::WRITE_REQUEST) {
@@ -737,6 +749,7 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
             if((_slowest_packet[f->cl] < 0) ||
                (_plat_stats[f->cl]->Max() < (f->atime - head->itime)))
                 _slowest_packet[f->cl] = f->pid;
+#ifdef BOOKSIM_STANDALONE
             _plat_stats[f->cl]->AddSample( f->atime - head->ctime);
             _nlat_stats[f->cl]->AddSample( f->atime - head->itime);
             _frag_stats[f->cl]->AddSample( (f->atime - head->atime) - (f->id - head->id) );
@@ -745,16 +758,21 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
                 _pair_plat[f->cl][f->src*_nodes+dest]->AddSample( f->atime - head->ctime );
                 _pair_nlat[f->cl][f->src*_nodes+dest]->AddSample( f->atime - head->itime );
             }
+#else
+            _plat_stats[f->cl]->AddSample( (int)(f->atime - head->ctime ));
+            _nlat_stats[f->cl]->AddSample( (int)(f->atime - head->itime ));
+            _frag_stats[f->cl]->AddSample( (int)((f->atime - head->atime) - (f->id - head->id)) );
+   
+            if(_pair_stats){
+                _pair_nlat[f->cl][f->src*_nodes+dest]->AddSample( (int)(f->atime - head->itime) );
+                _pair_plat[f->cl][f->src*_nodes+dest]->AddSample( (int)(f->atime - head->ctime) );
+            }
+#endif
         }
     
         if(f != head) {
             head->Free();
         }
-
-#ifndef BOOKSIM_STANDALONE
-        cout << "Retired by BookSim, pid: " << f->pid << " | dest: " << f->dest << endl;
-        _retired_pid[f->dest].push(f->pid);
-#endif
     }
   
     if(f->head && !f->tail) {
@@ -957,7 +975,7 @@ int TrafficManager::_GeneratePacketfromMotif( int source, int dest, int size, in
                       RandomInt(_subnets-1) :
                       _subnet[packet_type]);
   
-    printf("GeneratePacketFromMotif: %d, %d, %d, %d\n", source, dest, size, cl);
+    //printf("GeneratePacketFromMotif: %d, %d, %d, %d\n", source, dest, size, cl);
     
     if ( watch ) { 
         *gWatchOut << GetSimTime() << " | "
@@ -980,6 +998,11 @@ int TrafficManager::_GeneratePacketfromMotif( int source, int dest, int size, in
         f->record = record;
         f->cl     = cl;
 
+        // HANS: For debugging
+        // if ((f->pid == 556) || (f->pid == 557)){
+        //     f->watch = true;
+        // }
+
         _total_in_flight_flits[f->cl].insert(make_pair(f->id, f));
         if(record) {
             _measured_in_flight_flits[f->cl].insert(make_pair(f->id, f));
@@ -994,10 +1017,6 @@ int TrafficManager::_GeneratePacketfromMotif( int source, int dest, int size, in
             f->head = true;
             //packets are only generated to nodes smaller or equal to limit
             f->dest = packet_destination;
-
-            // HANS: For debugging purpose
-            //f->watch = true;
-
         } else {
             f->head = false;
             f->dest = -1;
@@ -1020,6 +1039,7 @@ int TrafficManager::_GeneratePacketfromMotif( int source, int dest, int size, in
         }
         if ( i == ( size - 1 ) ) { // Tail flit
             f->tail = true;
+
         } else {
             f->tail = false;
         }
@@ -1038,7 +1058,7 @@ int TrafficManager::_GeneratePacketfromMotif( int source, int dest, int size, in
         _partial_packets[source][cl].push_back( f );
     }
 
-    printf("GeneratePacketFromMotif with PID: %d\n", pid);
+    //printf("GeneratePacketFromMotif with PID: %d\n", pid);
 
     return pid;
 }
@@ -1082,7 +1102,6 @@ void TrafficManager::_Inject(){
 int TrafficManager::_InjectMotif( int source, int dest, int size ){
     // _qtime is not used because we don't use the (_partial_packets[input][c]) condition to determine whether the packet should be injected to the network.
     // When to / not to inject is solely determined by the Motif
-    printf("WKWK4\n");
     return _GeneratePacketfromMotif( source, dest, size, 0 ); // All motif-generated packets are assigned to class 0
 }
 #endif
@@ -1094,8 +1113,8 @@ void TrafficManager::_Step( )
         flits_in_flight |= !_total_in_flight_flits[c].empty();
     }
     if(flits_in_flight && (_deadlock_timer++ >= _deadlock_warn_timeout)){
+        cout << "WARNING: Possible network deadlock, flits_in_flight: " << flits_in_flight << ", _deadlock_timer: " << _deadlock_timer << ", _deadlock_warn_timeout: " << _deadlock_warn_timeout << endl;
         _deadlock_timer = 0;
-        cout << "WARNING: Possible network deadlock.\n";
     }
 
     vector<map<int, Flit *> > flits(_subnets);

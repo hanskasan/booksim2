@@ -425,7 +425,7 @@ PINTOOL3_RUNTIME =
 PINTOOL_CPPFLAGS = 
 PINTOOL_DIR = 
 PINTOOL_LDFLAGS = 
-PINTOOL_PATH = /home/hanskasan/Research/Latest_SST/local/sstelements-11.0.0/bin:/home/hanskasan/Research/Latest_SST/local/sstcore-11.0.0/bin:/home/hanskasan/Research/Latest_SST/local/packages/OpenMPI-4.0.5/bin:/usr/local/cuda-10.2/bin:/home/hanskasan/Research/Latest_SST/local/sstelements-11.0.0/bin:/home/hanskasan/Research/Latest_SST/local/sstcore-11.0.0/bin:/home/hanskasan/Research/Latest_SST/local/packages/OpenMPI-4.0.5/bin:/usr/local/cuda-10.2/bin:/home/hanskasan/.local/bin:/home/hanskasan/Research/Latest_SST/local/sstelements-11.0.0/bin:/home/hanskasan/Research/Latest_SST/local/sstcore-11.0.0/bin:/home/hanskasan/Research/Latest_SST/local/packages/OpenMPI-4.0.5/bin:/usr/local/cuda-10.2/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+PINTOOL_PATH = /home/hanskasan/.local/bin:/home/hanskasan/Research/Latest_SST/local/sstelements-11.0.0/bin:/home/hanskasan/Research/Latest_SST/local/sstcore-11.0.0/bin:/home/hanskasan/Research/Latest_SST/local/packages/OpenMPI-4.0.5/bin:/usr/local/cuda-10.2/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
 PINTOOL_RUNTIME = 
 RAMULATOR_CPPFLAGS = 
 RAMULATOR_LDFLAGS = 
@@ -508,7 +508,7 @@ top_build_prefix = ../../../../
 top_builddir = ../../../..
 top_srcdir = ../../../..
 AM_CPPFLAGS = \
-	$(MPI_CPPFLAGS)
+	$(MPI_CPPFLAGS) -D SINGLE_CYCLE
 
 compdir = $(pkglibdir)
 comp_LTLIBRARIES = libbooksim2.la

@@ -178,6 +178,9 @@ IQRouter::IQRouter( Configuration const & config, Module *parent,
   }
   _outstanding_classes.resize(_outputs, vector<queue<int> >(_vcs));
 #endif
+
+  // HANS: Additional variables
+  _inflight_vect.resize(_outputs, vector<queue<int>>(_vcs));
 }
 
 IQRouter::~IQRouter( )
@@ -497,10 +500,15 @@ void IQRouter::_InputQueuing( )
   _in_queue_flits.clear();
 
   while(!_proc_credits.empty()) {
-
+// #ifdef BOOKSIM_STANDALONE
     pair<int, pair<Credit *, int> > const & item = _proc_credits.front();
 
     int const time = item.first;
+// #else
+//     pair<uint64_t, pair<Credit *, int> > const & item = _proc_credits.front();
+
+//     uint64_t const time = item.first;
+// #endif
     if(GetSimTime() < time) {
       break;
     }
@@ -539,11 +547,19 @@ void IQRouter::_RouteEvaluate( )
 {
   assert(_routing_delay);
 
+//#ifdef BOOKSIM_STANDALONE
   for(deque<pair<int, pair<int, int> > >::iterator iter = _route_vcs.begin();
       iter != _route_vcs.end();
       ++iter) {
     
     int const time = iter->first;
+// #else
+//   for(deque<pair<uint64_t, pair<int, int> > >::iterator iter = _route_vcs.begin();
+//       iter != _route_vcs.end();
+//       ++iter) {
+    
+//     uint64_t const time = iter->first;
+// #endif
     if(time >= 0) {
       break;
     }
@@ -579,9 +595,15 @@ void IQRouter::_RouteUpdate( )
 
   while(!_route_vcs.empty()) {
 
+//#ifdef BOOKSIM_STANDALONE
     pair<int, pair<int, int> > const & item = _route_vcs.front();
 
     int const time = item.first;
+// #else
+//     pair<uint64_t, pair<int, int> > const & item = _route_vcs.front();
+
+//     uint64_t const time = item.first;
+// #endif
     if((time < 0) || (GetSimTime() < time)) {
       break;
     }
@@ -633,11 +655,19 @@ void IQRouter::_VCAllocEvaluate( )
 
   bool watched = false;
 
+//#ifdef BOOKSIM_STANDALONE
   for(deque<pair<int, pair<pair<int, int>, int> > >::iterator iter = _vc_alloc_vcs.begin();
       iter != _vc_alloc_vcs.end();
       ++iter) {
 
     int const time = iter->first;
+// #else
+//   for(deque<pair<uint64_t, pair<pair<int, int>, int> > >::iterator iter = _vc_alloc_vcs.begin();
+//       iter != _vc_alloc_vcs.end();
+//       ++iter) {
+
+//     uint64_t const time = iter->first;
+// #endif
     if(time >= 0) {
       break;
     }
@@ -782,11 +812,19 @@ void IQRouter::_VCAllocEvaluate( )
     _vc_allocator->PrintGrants( gWatchOut );
   }
 
+//#ifdef BOOKSIM_STANDALONE
   for(deque<pair<int, pair<pair<int, int>, int> > >::iterator iter = _vc_alloc_vcs.begin();
       iter != _vc_alloc_vcs.end();
       ++iter) {
 
     int const time = iter->first;
+// #else
+//   for(deque<pair<uint64_t, pair<pair<int, int>, int> > >::iterator iter = _vc_alloc_vcs.begin();
+//       iter != _vc_alloc_vcs.end();
+//       ++iter) {
+
+//     uint64_t const time = iter->first;
+// #endif
     if(time >= 0) {
       break;
     }
@@ -852,11 +890,19 @@ void IQRouter::_VCAllocEvaluate( )
     return;
   }
 
+//#ifdef BOOKSIM_STANDALONE
   for(deque<pair<int, pair<pair<int, int>, int> > >::iterator iter = _vc_alloc_vcs.begin();
       iter != _vc_alloc_vcs.end();
       ++iter) {
     
     int const time = iter->first;
+// #else
+//   for(deque<pair<uint64_t, pair<pair<int, int>, int> > >::iterator iter = _vc_alloc_vcs.begin();
+//       iter != _vc_alloc_vcs.end();
+//       ++iter) {
+    
+//     uint64_t const time = iter->first;
+// #endif
     assert(time >= 0);
     if(GetSimTime() < time) {
       break;
@@ -920,9 +966,15 @@ void IQRouter::_VCAllocUpdate( )
 
   while(!_vc_alloc_vcs.empty()) {
 
+//#ifdef BOOKSIM_STANDALONE
     pair<int, pair<pair<int, int>, int> > const & item = _vc_alloc_vcs.front();
 
     int const time = item.first;
+// #else
+//     pair<uint64_t, pair<pair<int, int>, int> > const & item = _vc_alloc_vcs.front();
+
+//     uint64_t const time = item.first;
+// #endif
     if((time < 0) || (GetSimTime() < time)) {
       break;
     }
@@ -1009,11 +1061,19 @@ void IQRouter::_SWHoldEvaluate( )
 {
   assert(_hold_switch_for_packet);
 
+//#ifdef BOOKSIM_STANDALONE
   for(deque<pair<int, pair<pair<int, int>, int> > >::iterator iter = _sw_hold_vcs.begin();
       iter != _sw_hold_vcs.end();
       ++iter) {
     
     int const time = iter->first;
+// #else
+//   for(deque<pair<uint64_t, pair<pair<int, int>, int> > >::iterator iter = _sw_hold_vcs.begin();
+//       iter != _sw_hold_vcs.end();
+//       ++iter) {
+    
+//     uint64_t const time = iter->first;
+// #endif
     if(time >= 0) {
       break;
     }
@@ -1084,10 +1144,16 @@ void IQRouter::_SWHoldUpdate( )
   assert(_hold_switch_for_packet);
 
   while(!_sw_hold_vcs.empty()) {
-    
+
+//#ifdef BOOKSIM_STANDALONE
     pair<int, pair<pair<int, int>, int> > const & item = _sw_hold_vcs.front();
     
     int const time = item.first;
+// #else
+//     pair<uint64_t, pair<pair<int, int>, int> > const & item = _sw_hold_vcs.front();
+    
+//     uint64_t const time = item.first;
+// #endif
     if(time < 0) {
       break;
     }
@@ -1405,11 +1471,19 @@ void IQRouter::_SWAllocEvaluate( )
 {
   bool watched = false;
 
+//#ifdef BOOKSIM_STANDALONE
   for(deque<pair<int, pair<pair<int, int>, int> > >::iterator iter = _sw_alloc_vcs.begin();
       iter != _sw_alloc_vcs.end();
       ++iter) {
 
     int const time = iter->first;
+// #else
+//   for(deque<pair<uint64_t, pair<pair<int, int>, int> > >::iterator iter = _sw_alloc_vcs.begin();
+//       iter != _sw_alloc_vcs.end();
+//       ++iter) {
+
+//     uint64_t const time = iter->first;
+// #endif
     if(time >= 0) {
       break;
     }
@@ -1568,12 +1642,20 @@ void IQRouter::_SWAllocEvaluate( )
       _spec_sw_allocator->PrintGrants(gWatchOut);
     }
   }
-  
+
+//#ifdef BOOKSIM_STANDALONE 
   for(deque<pair<int, pair<pair<int, int>, int> > >::iterator iter = _sw_alloc_vcs.begin();
       iter != _sw_alloc_vcs.end();
       ++iter) {
 
     int const time = iter->first;
+// #else
+//   for(deque<pair<uint64_t, pair<pair<int, int>, int> > >::iterator iter = _sw_alloc_vcs.begin();
+//       iter != _sw_alloc_vcs.end();
+//       ++iter) {
+
+//     uint64_t const time = iter->first;
+// #endif
     if(time >= 0) {
       break;
     }
@@ -1710,11 +1792,19 @@ void IQRouter::_SWAllocEvaluate( )
     return;
   }
 
+//#ifdef BOOKSIM_STANDALONE
   for(deque<pair<int, pair<pair<int, int>, int> > >::iterator iter = _sw_alloc_vcs.begin();
       iter != _sw_alloc_vcs.end();
       ++iter) {
 
     int const time = iter->first;
+// #else
+//   for(deque<pair<uint64_t, pair<pair<int, int>, int> > >::iterator iter = _sw_alloc_vcs.begin();
+//       iter != _sw_alloc_vcs.end();
+//       ++iter) {
+
+//     uint64_t const time = iter->first;
+// #endif
     assert(time >= 0);
     if(GetSimTime() < time) {
       break;
@@ -2211,11 +2301,19 @@ void IQRouter::_SWAllocUpdate( )
 
 void IQRouter::_SwitchEvaluate( )
 {
+// #ifdef BOOKSIM_STANDALONE
   for(deque<pair<int, pair<Flit *, pair<int, int> > > >::iterator iter = _crossbar_flits.begin();
       iter != _crossbar_flits.end();
       ++iter) {
     
     int const time = iter->first;
+// #else
+//   for(deque<pair<uint64_t, pair<Flit *, pair<int, int> > > >::iterator iter = _crossbar_flits.begin();
+//       iter != _crossbar_flits.end();
+//       ++iter) {
+    
+//     uint64_t const time = iter->first;
+// #endif
     if(time >= 0) {
       break;
     }
@@ -2243,9 +2341,15 @@ void IQRouter::_SwitchUpdate( )
 {
   while(!_crossbar_flits.empty()) {
 
+//#ifdef BOOKSIM_STANDALONE
     pair<int, pair<Flit *, pair<int, int> > > const & item = _crossbar_flits.front();
 
     int const time = item.first;
+// #else
+//     pair<uint64_t, pair<Flit *, pair<int, int> > > const & item = _crossbar_flits.front();
+
+//     uint64_t const time = item.first;
+// #endif
     if((time < 0) || (GetSimTime() < time)) {
       break;
     }
@@ -2324,6 +2428,9 @@ void IQRouter::_SendFlits( )
 #ifdef TRACK_FLOWS
       ++_sent_flits[f->cl][output];
 #endif
+
+    // HANS: Record in-flight packets
+    _inflight_vect[output][f->vc].push(GetSimTime());
 
       if(f->watch)
 	*gWatchOut << GetSimTime() << " | " << FullName() << " | "
@@ -2459,4 +2566,61 @@ void IQRouter::_UpdateNOQ(int input, int vc, Flit const * f) {
 		 << " (NOQ)." << endl;
     }
   }
+}
+
+// HANS: Additional functions
+int IQRouter::GetUsedCreditAvg(int o) const
+{
+  int sum = 0;
+  int n = 0;
+
+  for (int iter = gC; iter < _outputs; iter++)
+  {
+    if (iter != o)
+    { // Exclude port "o" from the averaging calculation
+      sum += GetUsedCredit(iter);
+      n += 1;
+    }
+  }
+
+  return (sum / n);
+}
+
+int IQRouter::GetInFlight(int output) const
+{
+  assert((output >= 0) && (output < _outputs));
+
+  int sum = 0;
+
+  for (int iter = 0; iter < _vcs; iter++)
+  {
+    while ((!_inflight_vect[output][iter].empty()) && (_inflight_vect[output][iter].front() + (2 * _output_channels[output]->GetLatency()) <= GetSimTime()))
+    {
+      _inflight_vect[output][iter].pop();
+    }
+
+    sum += _inflight_vect[output][iter].size();
+  }
+
+  // HANS: Sanity check
+  assert(sum >= 0);
+
+  return sum;
+}
+
+int IQRouter::GetInFlightAvg(int output) const
+{
+  int sum = 0;
+  int n = 0;
+
+  for (int iter = gC; iter < _outputs; iter++)
+  {
+    if (iter != output)
+    { // Exclude port "output" from the average calculation
+      sum += GetInFlight(iter);
+      n += 1;
+    }
+  }
+
+  return (sum / n);
 }

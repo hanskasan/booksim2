@@ -182,6 +182,11 @@ public:
   virtual vector<int> MaxCredits() const { return vector<int>(); }
 
   void Display( ostream & os = cout ) const;
+
+  // HANS: Additional functions
+  virtual int GetUsedCreditAvg(int o) const {return 0;}
+  virtual int GetInFlight(int o) const {return 0;}
+  virtual int GetInFlightAvg(int o) const {return 0;}
 };
 
 #endif

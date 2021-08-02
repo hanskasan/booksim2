@@ -80,14 +80,16 @@ public:
     bool IsRequestAlarm();
     void WakeBookSim();
 
+    void init(unsigned int phase);
+
     // Run a single BookSim step
     bool BabyStep(Cycle_t cycle);
 
 private:
     BookSimConfig       config;
     vector<Network*>    _net;
-    int                 _subnets;
     int                 _num_motif_nodes;
+    int                 _force_singleflit;
     bool                _is_request_alarm;
 
     TimeConverter* _booksim_tc;
@@ -168,6 +170,41 @@ private:
     int size_in_flits;
 
     ImplementSerializable(BookSimEvent);
+
+};
+
+class BookSimInitEvent : public Event {
+
+public:
+
+    // Constructor
+    BookSimInitEvent(int value)
+    {
+        int_val = value;
+    }
+
+    BookSimInitEvent() {} // For serialization only
+
+    // Deconstuctor
+    ~BookSimInitEvent()
+    {
+
+    }
+
+    int getIntVal() {return int_val;}
+
+    void serialize_order(SST::Core::Serialization::serializer &ser)  override {
+        Event::serialize_order(ser);
+        ser & int_val;
+    }
+
+protected:
+   
+
+private:
+    int int_val;
+
+    ImplementSerializable(BookSimInitEvent);
 
 };
 

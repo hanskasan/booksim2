@@ -55,6 +55,8 @@ public:
     BookSimInterface(ComponentId_t id, Params& params, booksim2* parent, int num_motif_nodes);
     ~BookSimInterface();
 
+    void init (unsigned int phase);
+
     // Event handler from the link
     void handle_input  (Event* ev);
     //void handle_output (Event* ev);

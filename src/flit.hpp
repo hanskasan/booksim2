@@ -53,9 +53,15 @@ public:
   bool head;
   bool tail;
   
+#ifdef BOOKSIM_STANDALONE
   int  ctime;
   int  itime;
   int  atime;
+#else
+  uint64_t  ctime;
+  uint64_t  itime;
+  uint64_t  atime;
+#endif
 
   int  id;
   int  pid;
@@ -65,7 +71,11 @@ public:
   int  src;
   int  dest;
 
+#ifdef BOOKSIM_STANDALONE
   int  pri;
+#else
+  uint64_t pri;
+#endif
 
   int  hops;
   bool watch;
@@ -88,6 +98,10 @@ public:
   static Flit * New();
   void Free();
   static void FreeAll();
+
+  // HANS: Additional entries
+  mutable int min;
+  mutable bool force_min;
 
 private:
 

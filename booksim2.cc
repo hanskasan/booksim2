@@ -26,6 +26,7 @@ using namespace std;
 // Global declarations from BookSim's standalone main.cpp
 TrafficManager * trafficManager = NULL;
 
+//uint64_t GetSimTime() {
 int GetSimTime() {
     return trafficManager->getTime();
 }
@@ -59,10 +60,13 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
     } 
     */
 
-    // Override configuration with SST parameters
+    // BEGIN: Override configuration with SST parameters
     bool found;
-    std::string temp_rf = params.find<string>("routing_function", "none", found);
-    config.Assign("routing_function", temp_rf);
+    std::string rf = params.find<string>("routing_function", "none", found); // Will return an error if the routing function is not specified
+    config.Assign("routing_function", rf);
+
+    std::string topo = params.find<string>("topology", "none", found); // Will return an error if the topology is not specified
+    config.Assign("topology", topo);
 
     int k = params.find<int>("k", 0, found);
     config.Assign("k", k);
@@ -70,6 +74,51 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
     int n = params.find<int>("n", 0, found);
     config.Assign("n", n);
 
+    int c = params.find<int>("c", 0, found);
+    config.Assign("c", c);
+
+    int x = params.find<int>("x", 0, found);
+    config.Assign("x", x);
+
+    int y = params.find<int>("y", 0, found);
+    config.Assign("y", y);
+
+    int xr = params.find<int>("xr", 0, found);
+    config.Assign("xr", xr);
+
+    int yr = params.find<int>("yr", 0, found);
+    config.Assign("yr", yr);
+
+    int num_vcs = params.find<int>("num_vcs", 0, found);
+    config.Assign("num_vcs", num_vcs);
+
+    int vc_buf_size = params.find<int>("vc_buf_size", 16, found);
+    config.Assign("vc_buf_size", vc_buf_size);
+
+    int wait_for_tail_credit = params.find<int>("wait_for_tail_credit", 0, found);
+    config.Assign("wait_for_tail_credit", wait_for_tail_credit);
+
+    std::string priority = params.find<string>("priority", "none", found);
+    config.Assign("priority", priority);
+
+    std::string vc_alloc = params.find<string>("vc_alloc", "islip", found);
+    config.Assign("vc_allocator", vc_alloc);
+
+    std::string sw_alloc = params.find<string>("sw_alloc", "islip", found);
+    config.Assign("sw_allocator", sw_alloc);
+
+    int alloc_iters = params.find<int>("alloc_iters", 1, found);
+    config.Assign("alloc_iters", alloc_iters);
+
+    float internal_speedup = params.find<float>("internal_speedup", 1.0, found);
+    config.Assign("internal_speedup", internal_speedup);
+
+    int use_noc_latency = params.find<int>("use_noc_latency", 0, found);
+    config.Assign("use_noc_latency", use_noc_latency);
+
+    // END: Override configuration with SST parameters
+
+    // Initialize based on our configuration
     InitializeRoutingMap( config );
 
     gPrintActivity = (config.GetInt("print_activity") > 0);
@@ -85,12 +134,12 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
     }
     
     // Build network
-    int _subnets = config.GetInt("subnets");
+    int subnets = config.GetInt("subnets");
     /*To include a new network, must register the network here
     *add an else if statement with the name of the network
     */
-    _net.resize(_subnets);
-    for (int i = 0; i < _subnets; ++i) {
+    _net.resize(subnets);
+    for (int i = 0; i < subnets; ++i) {
       ostringstream name;
       name << "network_" << i;
       _net[i] = Network::New( config, name.str() );
@@ -98,6 +147,7 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
 
     // Create BookSimInterface instance that is derived from BookSimInterface_Base
     _num_motif_nodes = params.find<int>("num_motif_nodes", -1);
+    _force_singleflit = params.find<int>("force_singleflit", 0, found);
     
     assert(_num_motif_nodes >= 0); // Must be a positive value
 
@@ -130,7 +180,10 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
 
 booksim2::~booksim2()
 {
-  for (int i = 0; i < _subnets; ++i){
+  int subnets = config.GetInt("subnets");
+
+  for (int i = 0; i < subnets; ++i){
+    printf("Nodes: %d, subnets: %d\n", _net[i]->NumNodes(), subnets);
     delete _net[i];
   }
 
@@ -138,11 +191,19 @@ booksim2::~booksim2()
   trafficManager = NULL;
 }
 
+void booksim2::init(unsigned int phase)
+{
+  _interface->init(phase);
+}
+
 void booksim2::Inject(BookSimEvent* event)
 {
   int src = event->getSrc();
   int dest = event->getDest();
-  int size = event->getSizeInFlits();
+
+  int size;
+  if (_force_singleflit)  size = 1;
+  else                    size = event->getSizeInFlits();
 
   // Sanity checks
   assert((src >= 0) && (src < _num_motif_nodes));
@@ -151,9 +212,10 @@ void booksim2::Inject(BookSimEvent* event)
 
   int pid = trafficManager->_InjectMotif(src, dest, size);
 
+  printf("BookSim inject with pid: %d from src: %d to dest: %d with size: %d, at time: %ld\n", pid, src, dest, size, getCurrentSimCycle());
+
   _injected_events.insert(make_pair(pid, event));
 
-  printf("BookSim inject with pid: %d at time: %ld\n", pid, getCurrentSimCycle());
 }
 
 void booksim2::WakeBookSim()
@@ -186,6 +248,9 @@ bool booksim2::BabyStep(Cycle_t cycle)
 
         // Tell BookSimInterface to send this event back to NIC
         _interface->send(iter_node, event);
+
+        // HANS: For debugging purpose, delete if not needed
+        // printf("Retiring for node: %d at time: %ld\n", iter_node, getCurrentSimCycle());
 
         _injected_events.erase(iter_map);
       }
