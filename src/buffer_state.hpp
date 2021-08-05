@@ -43,7 +43,7 @@ class BufferState : public Module {
     BufferState const * const _buffer_state;
   public:
     BufferPolicy(Configuration const & config, BufferState * parent, 
-		 const string & name);
+		 const string & name, bool global = false);
     virtual void SetMinLatency(int min_latency) {}
     virtual void TakeBuffer(int vc = 0);
     virtual void SendingFlit(Flit const * const f);
@@ -53,7 +53,7 @@ class BufferState : public Module {
     virtual int LimitFor(int vc = 0) const = 0;
 
     static BufferPolicy * New(Configuration const & config, 
-			      BufferState * parent, const string & name);
+			      BufferState * parent, const string & name, bool global);
   };
   
   class PrivateBufferPolicy : public BufferPolicy {
@@ -61,7 +61,7 @@ class BufferState : public Module {
     int _vc_buf_size;
   public:
     PrivateBufferPolicy(Configuration const & config, BufferState * parent, 
-			const string & name);
+			const string & name, bool global);
     virtual void SendingFlit(Flit const * const f);
     virtual bool IsFullFor(int vc = 0) const;
     virtual int AvailableFor(int vc = 0) const;
@@ -182,7 +182,7 @@ class BufferState : public Module {
 public:
 
   BufferState( const Configuration& config, 
-	       Module *parent, const string& name );
+	       Module *parent, const string& name, bool global = false );
 
   ~BufferState();
 

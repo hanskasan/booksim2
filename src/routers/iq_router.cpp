@@ -94,7 +94,18 @@ IQRouter::IQRouter( Configuration const & config, Module *parent,
   for (int j = 0; j < _outputs; ++j) {
     ostringstream module_name;
     module_name << "next_vc_o" << j;
-    _next_buf[j] = new BufferState( config, this, module_name.str( ) );
+
+    // FOR 1-D DRAGONFLY
+    // Different buffer size for local and global buffers
+    if (j >= (gK + ((2 * gK) - 1)))
+    {
+      _next_buf[j] = new BufferState(config, this, module_name.str(), true);
+    }
+    else
+    {
+      _next_buf[j] = new BufferState(config, this, module_name.str(), false);
+    }
+
     module_name.str("");
   }
 
