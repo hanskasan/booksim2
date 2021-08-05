@@ -533,6 +533,17 @@ void valiant_flatfly( const Router *r, const Flit *f, int in_channel,
     if ( in_channel < gC ){
       f->ph = 0;
       f->intm = RandomInt( powi( gK, gN )*gC-1);
+
+      // HANS: To determine whether this packet is routed MIN/NON
+      int src_router = f->src / gC;
+      int intm_router = f->intm / gC;
+      int dest_router = f->dest / gC;
+
+      if ((src_router == intm_router) || (intm_router == dest_router)){
+        f->min = 1;
+      } else {
+        f->min = 0;
+      }
     }
 
     int intm = flatfly_transformation(f->intm);
@@ -592,6 +603,9 @@ void min_flatfly( const Router *r, const Flit *f, int in_channel,
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
   int out_port;
+
+  // Always do minimal routing
+  f->min = 1;
 
   if(inject) {
 
@@ -861,13 +875,14 @@ void ugal_flatfly_onchip( const Router *r, const Flit *f, int in_channel,
     int debug = 0;
     int tmp_out_port, _ran_intm;
     int _min_hop, _nonmin_hop, _min_queucnt, _nonmin_queucnt;
-    int threshold = 2;
+    int threshold = 0;
 
     if ( in_channel < gC ){
       if(gTrace){
 	cout<<"New Flit "<<f->src<<endl;
       }
       f->ph   = 0;
+      f->min  = 1;
     }
 
     if(gTrace){
@@ -928,6 +943,7 @@ void ugal_flatfly_onchip( const Router *r, const Flit *f, int in_channel,
 		     << " NONMIN tmp_out_port: " << tmp_out_port << endl;
 	}
 	if (_ran_intm >= rID*_concentration && _ran_intm < (rID+1)*_concentration) {
+    f->force_min = true;
 	  _nonmin_queucnt = numeric_limits<int>::max();
 	} else  {
 	  _nonmin_queucnt =   r->GetUsedCredit(tmp_out_port);
@@ -940,13 +956,17 @@ void ugal_flatfly_onchip( const Router *r, const Flit *f, int in_channel,
 	if (_min_hop * _min_queucnt   <= _nonmin_hop * _nonmin_queucnt +threshold) {
 
 	  if (debug) cout << " Route MINIMALLY " << endl;
-	  f->ph = 2;
+	  f->ph  = 2;
+    f->min = 1;
 	} else {
+    assert(!f->force_min);
+
 	  // route non-minimally
 	  if (debug)  { cout << " Route NONMINIMALLY int node: " <<_ran_intm << endl; }
 	  f->ph = 1;
 	  f->intm = _ran_intm;
 	  dest = f->intm;
+    f->min = 0;
 	  if (dest >= rID*_concentration && dest < (rID+1)*_concentration) {
 	    f->ph = 2;
 	    dest = flatfly_transformation(f->dest);
@@ -965,7 +985,19 @@ void ugal_flatfly_onchip( const Router *r, const Flit *f, int in_channel,
 	  vcEnd -= available_vcs;
 	} else {
 	  assert(f->ph == 2);
-	  vcBegin += available_vcs;
+
+    if (f->min == 1){
+      if (gN == 1){ // 1D Flattened Butterfly
+        vcBegin = 0;
+        vcEnd = 1;
+      } else { // 2D Flattened Butterfly
+        vcBegin = 0; // 0
+        vcEnd = 0; // 0
+      }
+    } else {
+      assert(f->min == 0);
+      vcBegin += available_vcs;
+    }
 	}
       }
 
@@ -1141,7 +1173,7 @@ void ugal_inflight_avg_flatfly_onchip( const Router *r, const Flit *f, int in_ch
   if (_min_noinflight < 0)  _min_noinflight = 0;
   if (_non_noinflight < 0)  _non_noinflight = 0;
 
-  if (_min_hop * (_min_noinflight) <= _nonmin_hop * ((_non_noinflight) + 1)) {
+  if ((_min_hop * (_min_noinflight) <= _nonmin_hop * ((_non_noinflight) + 1)) || (f->force_min)) {
   //if (_min_hop * (_min_noinflight) <= _nonmin_hop * (_non_noinflight)) {
   //if (_min_hop * (_min_queucnt) <= _nonmin_hop * (_nonmin_queucnt)) {
     if (debug) cout << " Route MINIMALLY " << endl;
@@ -1154,6 +1186,9 @@ void ugal_inflight_avg_flatfly_onchip( const Router *r, const Flit *f, int in_ch
     // }
 
   } else {
+
+    assert(!f->force_min);
+
     // route non-minimally
     if (debug)  { cout << " Route NONMINIMALLY int node: " << _ran_intm << endl; }
     f->ph = 1;

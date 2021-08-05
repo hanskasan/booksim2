@@ -86,6 +86,17 @@ public:
     bool BabyStep(Cycle_t cycle);
 
 private:
+
+    struct booksim_event_bundle {
+        BookSimEvent* event;
+        bool ejected;
+
+        booksim_event_bundle() :
+            event(nullptr),
+            ejected(false)
+            {}
+    };
+
     BookSimConfig       config;
     vector<Network*>    _net;
     int                 _num_motif_nodes;
@@ -97,7 +108,7 @@ private:
 
     BookSimInterface_Base* _interface;
 
-    map<int, BookSimEvent *> _injected_events;
+    vector<map<int, booksim_event_bundle> > _injected_events;
 
     //void handle_new_packets(Event* ev);
 

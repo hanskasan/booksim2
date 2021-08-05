@@ -211,15 +211,12 @@ bool BookSimBridge::send(SimpleNetwork::Request* req, int vn) {
     // But the id is not needed for now, but this will be a problem when the "event->getTrustedSrc()" function is needed
     BookSimEvent* ev = new BookSimEvent(req, id);
 
-    // HANS: For debugging purpose, delete if not needed
-    //printf("Make new BookSimEvent with id: %d\n", id);
-
     // Fill in the number of flits
     ev->computeSizeInFlits(flit_size);
     int flits = ev->getSizeInFlits();
 
-    // HANS: For debugging
-    //printf("Make new BookSimEvent with id: %d, size: %d, flit_size: %d\n", id, flits, flit_size);
+    // HANS: For debugging, delete if not needed
+    //printf("Make new BookSimEvent with id: %d, size: %d, flit_size: %d at %ld\n", id, flits, flit_size, getCurrentSimCycle());
 
     ev->setInjectionTime(getCurrentSimTimeNano());
     out_handle.queue.push(ev);

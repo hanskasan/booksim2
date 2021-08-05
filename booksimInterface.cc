@@ -90,20 +90,22 @@ void BookSimInterface::handle_input(Event* ev)
     // Write down what to do when there are new packets coming for the traffic manager
     // Can refer to PortControl::handle_input_n2r at portControl.cc
 
+    // Cast to BookSimEvent
+    BookSimEvent* booksim_event = static_cast<BookSimEvent*>(ev);
+
+    // HANS: For debugging purpose, delete if not needed
+    //printf("Handle input at booksimInterface with source node: %d, at time: %ld\n", booksim_event->getSrc(), getCurrentSimCycle());
+
     // Wake BookSim up if needed
     // Refer to PortControl::handle_input_n2r -> parent->getRequestNotifyOnEvent() for more details
     if (_parent->IsRequestAlarm()){
         _parent->WakeBookSim();
     }
 
-    // Cast to BookSimEvent
-    BookSimEvent* booksim_event = static_cast<BookSimEvent*>(ev);
-
     // Inject packet to BookSim
     _parent->Inject(booksim_event);
 
-    // HANS: For debugging purpose, delete if not needed
-    //printf("Handle input at booksimInterface with source node: %d, at time: %ld\n", booksim_event->getSrc(), getCurrentSimCycle());
+    
 
     // For debugging interface: bypassing BookSim
     //_event_vect[booksim_event->getDest()].push(booksim_event);

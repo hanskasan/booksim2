@@ -498,6 +498,15 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     _overall_avg_accepted.resize(_classes, 0.0);
     _overall_max_accepted.resize(_classes, 0.0);
 
+    // HANS: Additional statistics
+    _plat_min_stats.resize(_classes);
+    _plat_non_stats.resize(_classes);
+
+    _overall_avg_plat_min.resize(_classes, 0.0);
+    _overall_avg_plat_non.resize(_classes, 0.0);
+    _overall_n_plat_min.resize(_classes, 0);
+    _overall_n_plat_non.resize(_classes, 0);
+
 #ifdef TRACK_STALLS
     _buffer_busy_stalls.resize(_classes);
     _buffer_conflict_stalls.resize(_classes);
@@ -538,6 +547,18 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
         _hop_stats[c] = new Stats( this, tmp_name.str( ), 1.0, 20 );
         _stats[tmp_name.str()] = _hop_stats[c];
         tmp_name.str("");
+
+        // HANS: Additional statistics
+        tmp_name << "plat_min_stat_" << c;
+        _plat_min_stats[c] = new Stats( this, tmp_name.str( ), 1.0, 1000 );
+        _stats[tmp_name.str()] = _plat_min_stats[c];
+        tmp_name.str("");
+
+        tmp_name << "plat_non_stat_" << c;
+        _plat_non_stats[c] = new Stats( this, tmp_name.str( ), 1.0, 1000 );
+        _stats[tmp_name.str()] = _plat_non_stats[c];
+        tmp_name.str("");
+
 
         if(_pair_stats){
             _pair_plat[c].resize(_nodes*_nodes);
@@ -617,6 +638,10 @@ TrafficManager::~TrafficManager( )
                 }
             }
         }
+
+        // HANS: Additional statistics
+        delete _plat_min_stats[c];
+        delete _plat_non_stats[c];
     }
   
     if(gWatchOut && (gWatchOut != &cout)) delete gWatchOut;
@@ -719,7 +744,9 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
         }
 
 #ifndef BOOKSIM_STANDALONE
-        //cout << "Retired by BookSim, pid: " << f->pid << " | src: " << head->src << " | dest: " << head->dest << " | plat: " << f->atime - head->ctime << endl;
+        // // if (((f->pid % 1024) == 0) || ((f->pid % 1024) == 1023))
+        // if (head->dest == 32)
+            //cout << GetSimTime() << " - Retired by BookSim, pid: " << f->pid << " | src: " << head->src << " | dest: " << head->dest << " | min: " << head->min << " | plat: " << f->atime - head->ctime << endl;
         _retired_pid[head->dest].push(f->pid);
 #endif
 
@@ -749,7 +776,7 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
             if((_slowest_packet[f->cl] < 0) ||
                (_plat_stats[f->cl]->Max() < (f->atime - head->itime)))
                 _slowest_packet[f->cl] = f->pid;
-#ifdef BOOKSIM_STANDALONE
+//#ifdef BOOKSIM_STANDALONE
             _plat_stats[f->cl]->AddSample( f->atime - head->ctime);
             _nlat_stats[f->cl]->AddSample( f->atime - head->itime);
             _frag_stats[f->cl]->AddSample( (f->atime - head->atime) - (f->id - head->id) );
@@ -758,16 +785,24 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
                 _pair_plat[f->cl][f->src*_nodes+dest]->AddSample( f->atime - head->ctime );
                 _pair_nlat[f->cl][f->src*_nodes+dest]->AddSample( f->atime - head->itime );
             }
-#else
-            _plat_stats[f->cl]->AddSample( (int)(f->atime - head->ctime ));
-            _nlat_stats[f->cl]->AddSample( (int)(f->atime - head->itime ));
-            _frag_stats[f->cl]->AddSample( (int)((f->atime - head->atime) - (f->id - head->id)) );
+// #else
+//             _plat_stats[f->cl]->AddSample( (int)(f->atime - head->ctime ));
+//             _nlat_stats[f->cl]->AddSample( (int)(f->atime - head->itime ));
+//             _frag_stats[f->cl]->AddSample( (int)((f->atime - head->atime) - (f->id - head->id)) );
    
-            if(_pair_stats){
-                _pair_nlat[f->cl][f->src*_nodes+dest]->AddSample( (int)(f->atime - head->itime) );
-                _pair_plat[f->cl][f->src*_nodes+dest]->AddSample( (int)(f->atime - head->ctime) );
+//             if(_pair_stats){
+//                 _pair_plat[f->cl][f->src*_nodes+dest]->AddSample( (int)(f->atime - head->ctime) );
+//                 _pair_nlat[f->cl][f->src*_nodes+dest]->AddSample( (int)(f->atime - head->itime) );
+//             }
+// #endif
+
+            // HANS: Record MIN and NON packets
+            if (head->min == 1){
+                _plat_min_stats[f->cl]->AddSample( f->atime - head->ctime );
+            } else {
+                assert(head->min == 0);
+                _plat_non_stats[f->cl]->AddSample( f->atime - head->ctime );
             }
-#endif
         }
     
         if(f != head) {
@@ -1375,7 +1410,6 @@ void TrafficManager::_Step( )
                     Flit * const nf = _partial_packets[n][c].front();
                     nf->vc = f->vc;
                 }
-	
                 if((_sim_state == warming_up) || (_sim_state == running)) {
                     ++_sent_flits[c][n];
                     if(f->head) {
@@ -1474,6 +1508,10 @@ void TrafficManager::_ClearStats( )
         _accepted_packets[c].assign(_nodes, 0);
         _sent_flits[c].assign(_nodes, 0);
         _accepted_flits[c].assign(_nodes, 0);
+
+        // HANS: Additional statistics
+        _plat_min_stats[c]->Clear( );
+        _plat_non_stats[c]->Clear( );
 
 #ifdef TRACK_STALLS
         _buffer_busy_stalls[c].assign(_subnets*_routers, 0);
@@ -1875,10 +1913,21 @@ void TrafficManager::_UpdateOverallStats() {
 
         _overall_hop_stats[c] += _hop_stats[c]->Average();
 
+        // HANS: Additional statistics
+        _overall_avg_plat_min[c] += _plat_min_stats[c]->Average();
+        _overall_avg_plat_non[c] += _plat_non_stats[c]->Average();
+        _overall_n_plat_min[c] += _plat_min_stats[c]->NumSamples();
+        _overall_n_plat_non[c] += _plat_non_stats[c]->NumSamples();
+
         int count_min, count_sum, count_max;
         double rate_min, rate_sum, rate_max;
         double rate_avg;
+#ifdef BOOKSIM_STANDALONE
         double time_delta = (double)(_drain_time - _reset_time);
+#else
+        // HANS: FIXME: Maybe we have to use the SST Time instead of the BookSim time because BookSim time is not incremented when there is no outstanding packet in the network
+        double time_delta = (double)(_time - _reset_time);
+#endif
         _ComputeStats( _sent_flits[c], &count_sum, &count_min, &count_max );
         rate_min = (double)count_min / time_delta;
         rate_sum = (double)count_sum / time_delta;
@@ -2140,6 +2189,13 @@ void TrafficManager::DisplayStats(ostream & os) const {
             << "Packet latency average = " << _plat_stats[c]->Average() << endl
             << "\tminimum = " << _plat_stats[c]->Min() << endl
             << "\tmaximum = " << _plat_stats[c]->Max() << endl
+            //----------------------------------ADDITIONAL---------------------------------------
+            << "Min packet latency average = " << _plat_min_stats[c]->Average() << endl
+            << "Non packet latency average = " << _plat_non_stats[c]->Average() << endl
+            << "MIN packet count           = " << _plat_min_stats[c]->NumSamples() << endl
+            << "NON packet count           = " << _plat_non_stats[c]->NumSamples() << endl
+            << "MIN packet ratio           = " << ((double)_plat_min_stats[c]->NumSamples() / ((double)_plat_min_stats[c]->NumSamples() + (double)_plat_non_stats[c]->NumSamples()) * 100) << "%" << endl
+            //-------------------------------END OF ADDITIONAL-----------------------------------
             << "Network latency average = " << _nlat_stats[c]->Average() << endl
             << "\tminimum = " << _nlat_stats[c]->Min() << endl
             << "\tmaximum = " << _nlat_stats[c]->Max() << endl
@@ -2253,6 +2309,20 @@ void TrafficManager::DisplayOverallStats( ostream & os ) const {
            << " (" << _total_sims << " samples)" << endl;
         os << "\tmaximum = " << _overall_max_plat[c] / (double)_total_sims
            << " (" << _total_sims << " samples)" << endl;
+
+        //----------------------------------ADDITIONAL---------------------------------------
+        // HANS: These packets are retired
+        os << "\tMIN packet latency average = " << _overall_avg_plat_min[c] / (double)_total_sims
+           << " (" << _total_sims << " samples)" << endl;
+        os << "\tNON packet latency average = " << _overall_avg_plat_non[c] / (double)_total_sims
+           << " (" << _total_sims << " samples)" << endl;
+        os << "\tMIN packet count = " << _overall_n_plat_min[c] / (double)_total_sims
+           << " (" << _total_sims << " samples)" << endl;
+        os << "\tNON packet count = " << _overall_n_plat_non[c] / (double)_total_sims
+           << " (" << _total_sims << " samples)" << endl;
+        os << "\tMIN packet ratio = " << (double)_overall_n_plat_min[c] / ((double)_overall_n_plat_min[c] + (double)_overall_n_plat_non[c]) * 100 << "%"
+           << " (" << _total_sims << " samples)" << endl;
+        //-------------------------------END OF ADDITIONAL-----------------------------------
 
         os << "Network latency average = " << _overall_avg_nlat[c] / (double)_total_sims
            << " (" << _total_sims << " samples)" << endl;
@@ -2446,6 +2516,7 @@ double TrafficManager::_GetAveragePacketSize(int cl) const
     return (double)sum / (double)(_packet_size_max_val[cl] + 1);
 }
 
+// HANS: Additional functions
 #ifndef BOOKSIM_STANDALONE
 bool TrafficManager::IsRetiredPidEmpty(int dest) const
 {
@@ -2472,5 +2543,4 @@ int TrafficManager::GetRetiredPid(int dest)
 
     return pid;
 }
-
 #endif

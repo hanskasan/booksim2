@@ -206,6 +206,15 @@ protected:
 
   map<string, Stats *> _stats;
 
+  // HANS: Additional statistics
+  vector<Stats *> _plat_min_stats;
+  vector<Stats *> _plat_non_stats;
+
+  vector<double> _overall_avg_plat_min;
+  vector<double> _overall_avg_plat_non;
+  vector<int   > _overall_n_plat_min;
+  vector<int   > _overall_n_plat_non;
+
   // ============ Simulation parameters ============ 
 
   enum eSimState { warming_up, running, draining, done };
@@ -304,7 +313,9 @@ protected:
   
   void _LoadWatchList(const string & filename);
 
+#ifdef BOOKSIM_STANDALONE
   virtual void _UpdateOverallStats();
+#endif
 
   virtual string _OverallStatsCSV(int c = 0) const;
 
@@ -327,6 +338,8 @@ public:
   virtual void DisplayOverallStats( ostream & os = cout ) const ;
   virtual void DisplayOverallStatsCSV( ostream & os = cout ) const ;
 
+  // HANS: Additional functions
+
 //#ifdef BOOKSIM_STANDALONE
   inline int getTime() { 
     assert(_time >= 0); // Make sure that this value is not negative due to overflow
@@ -345,6 +358,8 @@ public:
   bool IsRetiredPidEmpty    (int dest) const;
   bool IsAllRetiredPidEmpty () const;
   int  GetRetiredPid        (int dest);
+
+  virtual void _UpdateOverallStats();
 
 #endif
 

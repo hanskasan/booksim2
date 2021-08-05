@@ -176,10 +176,18 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
 
     // Clock is initially running, so don't need to wake BookSim up
     _is_request_alarm = false;
+
+    // To keep the order of events as they were injected to the network
+    _injected_events.resize(_num_motif_nodes);
 }
 
 booksim2::~booksim2()
 {
+  // Display stats
+  //trafficManager->DisplayStats();
+  trafficManager->_UpdateOverallStats();
+  trafficManager->DisplayOverallStats();
+
   int subnets = config.GetInt("subnets");
 
   for (int i = 0; i < subnets; ++i){
@@ -201,6 +209,7 @@ void booksim2::Inject(BookSimEvent* event)
   int src = event->getSrc();
   int dest = event->getDest();
 
+  // Size of packets injected to BookSim
   int size;
   if (_force_singleflit)  size = 1;
   else                    size = event->getSizeInFlits();
@@ -212,9 +221,16 @@ void booksim2::Inject(BookSimEvent* event)
 
   int pid = trafficManager->_InjectMotif(src, dest, size);
 
-  printf("BookSim inject with pid: %d from src: %d to dest: %d with size: %d, at time: %ld\n", pid, src, dest, size, getCurrentSimCycle());
+  // HANS: For debugging purpose, delete if not needed
+  //if (((pid % 1024) == 0) || ((pid % 1024) == 1023))
+  // if (src == 32)
+    //printf("%d - BookSim inject with pid: %d from src: %d to dest: %d with size: %d at: %ld\n", GetSimTime(), pid, src, dest, size, getCurrentSimCycle());
 
-  _injected_events.insert(make_pair(pid, event));
+  booksim_event_bundle event_bundle;
+  event_bundle.event = event;
+  event_bundle.ejected = false;
+
+  _injected_events[dest].insert(make_pair(pid, event_bundle));
 
 }
 
@@ -237,22 +253,47 @@ bool booksim2::BabyStep(Cycle_t cycle)
     // FOR DEBUGGING PURPOSE
     //printf("BabyStep at: %d\n", getCurrentSimCycle());
 
-    // Send event back to NIC
+    // Raise the 'ejected' flag
     for (int iter_node = 0; iter_node < _num_motif_nodes; iter_node++){
       if (!trafficManager->IsRetiredPidEmpty(iter_node)){
         int pid = trafficManager->GetRetiredPid(iter_node);
 
-        map<int, BookSimEvent *>::iterator iter_map = _injected_events.find(pid);
-        BookSimEvent* event = iter_map->second;
+        map<int, booksim_event_bundle>::iterator iter_map = _injected_events[iter_node].find(pid);
+        BookSimEvent* event = iter_map->second.event;
+        iter_map->second.ejected = true;
         assert(event->getDest() == iter_node);
+      }
+    }
 
-        // Tell BookSimInterface to send this event back to NIC
-        _interface->send(iter_node, event);
+    // Send event back to NIC following the order of arrival
 
-        // HANS: For debugging purpose, delete if not needed
-        // printf("Retiring for node: %d at time: %ld\n", iter_node, getCurrentSimCycle());
+    for (int iter_node = 0; iter_node < _num_motif_nodes; iter_node++){
+      if (!_injected_events[iter_node].empty()){
+        map<int, booksim_event_bundle>::iterator iter_map = _injected_events[iter_node].begin();
 
-        _injected_events.erase(iter_map);
+        while (iter_map->second.ejected){
+          BookSimEvent* event = iter_map->second.event;
+          assert(event->getDest() == iter_node);
+
+          // Tell BookSimInterface to send this event back to NIC
+          _interface->send(iter_node, event);
+
+          // HANS: For debugging purpose, delete if not needed
+          // printf("Retiring for node: %d at time: %ld\n", iter_node, getCurrentSimCycle());
+
+          // Pop the entry if the event is sent back to the NIC
+          _injected_events[iter_node].erase(iter_map);
+
+          // HANS: For debugging purpose, delete if not needed
+          //printf("Pop PID: %d at:%d\n", iter_map->first, GetSimTime());
+
+          // Fetch the next head
+          if (!_injected_events[iter_node].empty()){
+            iter_map = _injected_events[iter_node].begin();
+          } else {
+            break; // Break the while loop, proceed with the outer for loop
+          }
+        }
       }
     }
 
@@ -264,7 +305,6 @@ bool booksim2::BabyStep(Cycle_t cycle)
     } else {
       // Sanity check
       assert(_injected_events.empty());
-
       _is_request_alarm = true;
       return true;
     }

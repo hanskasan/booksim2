@@ -30,9 +30,20 @@
 
 #include <iostream>
 #include <stack>
+#include <queue>
 
 #include "booksim.hpp"
 #include "outputset.hpp"
+
+#ifdef DGB_ON
+struct learnset{
+    int id; // Record the fID
+    int gen_time;
+    int src_router; // Router who generates the learnset
+    queue<float> diff_min;
+    queue<pair<int, float>> diff_non;
+};
+#endif
 
 class Flit {
 
@@ -53,15 +64,15 @@ public:
   bool head;
   bool tail;
   
-#ifdef BOOKSIM_STANDALONE
+//#ifdef BOOKSIM_STANDALONE
   int  ctime;
   int  itime;
   int  atime;
-#else
-  uint64_t  ctime;
-  uint64_t  itime;
-  uint64_t  atime;
-#endif
+// #else
+//   uint64_t  ctime;
+//   uint64_t  itime;
+//   uint64_t  atime;
+// #endif
 
   int  id;
   int  pid;

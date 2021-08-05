@@ -508,7 +508,7 @@ top_build_prefix = ../../../../
 top_builddir = ../../../..
 top_srcdir = ../../../..
 AM_CPPFLAGS = \
-	$(MPI_CPPFLAGS) -D SINGLE_CYCLE
+	$(MPI_CPPFLAGS) -D SINGLE_CYCLE -D DGB_ON
 
 compdir = $(pkglibdir)
 comp_LTLIBRARIES = libbooksim2.la
