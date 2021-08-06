@@ -82,6 +82,10 @@ void valiant_flatfly( const Router *r, const Flit *f, int in_channel,
 // HANS: Additional routing functions
 void ugal_inflight_avg_flatfly_onchip( const Router *r, const Flit *f, int in_channel,
         OutputSet *outputs, bool inject );
+#ifdef DGB_ON
+void dgb_flatfly_onchip( const Router *r, const Flit *f, int in_channel,
+             OutputSet *outputs, bool inject );
+#endif
 
 int find_distance (int src, int dest);
 int find_ran_intm (int src, int dest);

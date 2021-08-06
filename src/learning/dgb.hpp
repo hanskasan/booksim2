@@ -11,9 +11,9 @@
 #include <utility>
 #include <vector>
 
-#include "flit.hpp"
-#include "globals.hpp"
-#include "random_utils.hpp"
+#include "../flit.hpp"
+#include "../globals.hpp"
+#include "../random_utils.hpp"
 
 // MODES
 // 1) Choose how the feedback is sent to the source router
@@ -134,7 +134,7 @@ public:
     vector<int>   _prev_local_lat_count;
     vector<int> _latest_learnset_gen_time;
 
-    vector<float> _max_exploration_bound;
+    //vector<float> _max_exploration_bound;
 
     void DoTraining (int local_min_port, int local_non_port, int global_min_port, int global_non_port, int h_min, int h_non, int q_min, int q_non, int q_min_noinflight, int q_non_noinflight, int dest_router, int chan_diff, int q_min_global, int q_non_global, int q_min_global_noinflight, int q_non_global_noinflight);
 

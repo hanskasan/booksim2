@@ -101,6 +101,8 @@ void FlatFlyOnChip::_ComputeSize( const Configuration &config )
   _channels = _num_of_switch * (_r - _c); 
   _size = _num_of_switch;
 
+  // HANS: Additional variables
+  gIsDragonfly = false; // To indicate that we DON'T use dragonfly
 }
 
 void FlatFlyOnChip::_BuildNet( const Configuration &config )
@@ -293,6 +295,16 @@ void FlatFlyOnChip::_BuildNet( const Configuration &config )
   if(gTrace){
     cout<<"Setup Finished Link"<<endl;
   }
+
+  // HANS: Additional
+  // Allocate memory to keep the data for all the routers
+  for (int idx_router = 0; idx_router < _num_of_switch; idx_router++){
+    _routers[idx_router]->_next_routers = new Router* [_num_of_switch];
+
+    for (int idx_router_2 = 0; idx_router_2 < _num_of_switch; idx_router_2++){
+      _routers[idx_router]->_next_routers[idx_router_2] = _routers[idx_router_2];
+    }
+  }
 }
 
 
@@ -328,6 +340,9 @@ void FlatFlyOnChip::RegisterRoutingFunctions(){
   gRoutingFunctionMap["ugal_inflight_avg_flatfly"] = &ugal_inflight_avg_flatfly_onchip;
   gRoutingFunctionMap["ugal_pni_flatfly"] = &ugal_pni_flatfly_onchip;
   gRoutingFunctionMap["ugal_xyyx_flatfly"] = &ugal_xyyx_flatfly_onchip;
+#ifdef DGB_ON
+  gRoutingFunctionMap["dgb_flatfly"] = &dgb_flatfly_onchip;
+#endif
 
 }
 
@@ -1073,7 +1088,6 @@ void ugal_inflight_avg_flatfly_onchip( const Router *r, const Flit *f, int in_ch
     int _ran_intm;
     int _min_hop, _nonmin_hop, _min_queucnt, _nonmin_queucnt;
     //int _min_inflight, _nonmin_inflight;
-    int bias = 0;
 
     if ( in_channel < gC ){
       if(gTrace){
@@ -1469,6 +1483,356 @@ void ugal_pni_flatfly_onchip( const Router *r, const Flit *f, int in_channel,
   outputs->AddRange( out_port , vcBegin, vcEnd );
 }
 
+#ifdef DGB_ON
+// DGB - The best routing function
+void dgb_flatfly_onchip( const Router *r, const Flit *f, int in_channel,
+			  OutputSet *outputs, bool inject )
+{
+  // Useful variables
+  int src_router = f->src / gC;
+  int dest_router = f->dest / gC;
+  int intm_router;
+
+  // ( Traffic Class , Routing Order ) -> Virtual Channel Range
+  int vcBegin = 0, vcEnd = gNumVCs-1;
+  if ( f->type == Flit::READ_REQUEST ) {
+    vcBegin = gReadReqBeginVC;
+    vcEnd = gReadReqEndVC;
+  } else if ( f->type == Flit::WRITE_REQUEST ) {
+    vcBegin = gWriteReqBeginVC;
+    vcEnd = gWriteReqEndVC;
+  } else if ( f->type ==  Flit::READ_REPLY ) {
+    vcBegin = gReadReplyBeginVC;
+    vcEnd = gReadReplyEndVC;
+  } else if ( f->type ==  Flit::WRITE_REPLY ) {
+    vcBegin = gWriteReplyBeginVC;
+    vcEnd = gWriteReplyEndVC;
+  }
+  assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
+
+  int out_port;
+
+  if(inject) {
+
+    out_port = -1;
+
+  } else {
+
+    int dest  = flatfly_transformation(f->dest);
+
+    int rID =  r->GetID();
+    int _concentration = gC;
+    int found;
+    int debug = f->watch;
+    int min_out_port, non_out_port;
+    int _ran_intm;
+    int _min_hop, _nonmin_hop, _min_queucnt, _nonmin_queucnt;
+    float bias = 0.0;
+
+    f->tail_flit->dest = dest;
+    //f->rc_start = GetSimTime();
+
+    if ( in_channel < gC ){
+      if(gTrace){
+	      cout<<"New Flit "<<f->src<<endl;
+      }
+
+      // HANS: Additionals
+      f->ph  = 0;
+      f->min = 1;
+      f->lat_start = GetSimTime();
+      f->dgb_train = true;
+
+      // HANS: Enabling DGB with large packets
+      // Assign to tail flit
+      f->tail_flit->lat_start = GetSimTime();
+      f->tail_flit->dgb_train = true;
+      f->tail_flit->min = 1;
+
+      assert(f->head);
+    }
+
+    if(gTrace){
+      int load = 0;
+      cout<<"Router "<<rID<<endl;
+      cout<<"Input Channel "<<in_channel<<endl;
+      //need to modify router to report the buffere depth
+      load +=r->GetBufferOccupancy(in_channel);
+      cout<<"Rload "<<load<<endl;
+    }
+
+    if (debug){
+      cout << "***** Flit: " << f->id << " at router: " << rID << " routing from src : " << f->src <<  " to dest : " << dest << " f->ph: " <<f->ph << " intm: " << f->intm << " *****" <<  endl;
+    }
+    // f->ph == 0  ==> make initial global adaptive decision
+    // f->ph == 1  ==> route nonminimaly to random intermediate node
+    // f->ph == 2  ==> route minimally to destination
+
+    found = 0;
+
+    if (f->ph == 1){
+      dest = f->intm;
+    }
+
+    if (dest >= rID*_concentration && dest < (rID+1)*_concentration) {
+
+      if (f->ph == 1) { // Arrive at intermediate router
+	         f->ph = 2;
+	         dest = flatfly_transformation(f->dest);
+
+           // CAUTION! May need to be fixed
+           assert(dest == f->dest);
+
+	         if (debug)   cout << "      done routing to intermediate ";
+      } else { // Arrive at destination router
+	        found = 1;
+	        out_port = dest % gC;
+	        if (debug)   cout << "      final routing to destination ";
+      }
+    }
+
+    if (!found) {
+      if (f->ph == 0) {
+	      _min_hop = find_distance(flatfly_transformation(f->src),dest);
+
+        _ran_intm = find_ran_intm(flatfly_transformation(f->src), dest);
+        f->intm = _ran_intm;
+        f->tail_flit->intm = f->intm;
+        intm_router = _ran_intm / gC;
+
+        min_out_port =  flatfly_outport(dest, rID);
+        f->min_port = min_out_port - gC;
+        f->min_global_port = f->min_port;
+        f->tail_flit->min_port = f->min_port;
+        f->tail_flit->min_global_port = f->min_port;
+
+	      if (f->watch){
+	        *gWatchOut << GetSimTime() << " | " << r->FullName() << " | "
+	      	     << " MIN tmp_out_port: " << min_out_port;
+	      }
+
+	      _min_queucnt =   r->GetUsedCredit(min_out_port);
+        //_min_queucnt = r->GetUsedCreditVC(min_out_port, 0);
+
+	      _nonmin_hop = find_distance(flatfly_transformation(f->src),_ran_intm) + find_distance(_ran_intm, dest);
+        non_out_port =  flatfly_outport(_ran_intm, rID);
+        f->non_port = non_out_port - gC;
+        f->non_global_port = f->non_port;
+        f->tail_flit->non_port = f->non_port;
+        f->tail_flit->non_global_port = f->non_port;
+
+        //cout << "Assign fID: " << f->id << " with NonPort: " << f->non_port << " | Src: " << f->src << " | Intm: " << _ran_intm << " | Dest: " << f->dest << endl;
+
+	      if (f->watch){
+	        *gWatchOut << GetSimTime() << " | " << r->FullName() << " | "
+	      	     << " NONMIN tmp_out_port: " << non_out_port << endl;
+	      }
+
+	      if (_ran_intm >= rID*_concentration && _ran_intm < (rID+1)*_concentration) {
+	        _nonmin_queucnt = numeric_limits<int>::max();
+	      } else  {
+	        _nonmin_queucnt = r->GetUsedCredit(non_out_port);
+          //_nonmin_queucnt = r->GetUsedCreditVC(non_out_port, 1);
+	      }
+
+        // If the intermediate router is the same as either source or destination router, a packet is forced to be routed minimally.
+        if ((intm_router == src_router) || (intm_router == dest_router)){
+          f->force_min = true;
+          f->min = 1;
+          f->tail_flit->force_min = true;
+          f->tail_flit->min = 1;
+        }
+
+        // HANS: For debugging
+        //cout << GetSimTime() << " - MaxExploreBound: " << max_explore_bound << " | Hmin: " << _min_hop << " | Hnon: " << _nonmin_hop << " | Qmin: " << _min_queucnt << " | Qnon: " << r->GetUsedCredit(non_out_port) << endl;
+
+        // Record hop values
+        f->h_min = _min_hop;
+        f->h_non = _nonmin_hop;
+        f->tail_flit->h_min = f->h_min;
+        f->tail_flit->h_non = f->h_non;
+
+        f->q_min = _min_queucnt - r->GetInFlight(min_out_port);
+        //f->q_min = r->GetUsedCreditVC(min_out_port, 1) - r->GetInFlightVC(min_out_port, 1);
+        f->q_non = r->GetUsedCredit(non_out_port) - r->GetInFlight(non_out_port);
+        //f->q_non = r->GetUsedCreditVC(non_out_port, 0) - r->GetInFlightVC(non_out_port, 0);
+        assert(f->q_min >= 0);
+        assert(f->q_non >= 0);
+        //f->q_min_total = _min_queucnt;
+        f->tail_flit->q_min = f->q_min;
+        f->tail_flit->q_non = f->q_non;
+        //f->tail_flit->q_min_total = f->q_min_total;
+
+        // Get Bias
+        if (f->non_port >= 0){ // The intermediate node is located at the source router
+          assert(f->min_port >= 0);
+          bias = r->dgb->GetBias(f->min_port, f->non_port, -1, -1, _min_hop, _nonmin_hop, _min_queucnt, r->GetUsedCredit(non_out_port), f->q_min, f->q_non, dest_router, (f->h_non - f->h_min) * 50, 0, 0, 0, 0);
+          // f->bias = bias;
+          // f->tail_flit->bias = bias;
+        } /*else {
+          f->bias = 0;
+          f->tail_flit->bias = 0;
+        }*/
+
+        //f->hq_min = _min_hop * _min_queucnt;
+        //f->hq_non = _nonmin_hop * r->GetUsedCreditVC(non_out_port, 1);
+        //f->hq_non = _nonmin_hop * r->GetUsedCredit(non_out_port);
+
+        int min_hq = _min_hop * (_min_queucnt);
+        int non_hq = _nonmin_hop * (r->GetUsedCredit(non_out_port) + bias);
+        if (min_hq < 0) min_hq = 0;
+        if (non_hq < 0) non_hq = 0;
+
+        // f->hq_min = min_hq;
+        // f->hq_non = non_hq;
+
+        // HANS: Try to register the local latency here
+        // int min_latency = f->h_min * f->q_min;
+        // int non_latency = f->h_non * f->q_non;
+        // r->bandit->RegisterLocalLatency(dest_router, 1, f->h_min, f->h_non, min_latency, 0);
+        // r->bandit->RegisterLocalLatency(dest_router, 0, f->h_min, f->h_non, non_latency, 0);
+        
+        if ((f->force_min) || (min_hq <= non_hq)) {
+        //if (((f->force_min) || (min_hq <= non_hq)) && (min_out_port != non_out_port)) {
+        
+	        if (debug) cout << " Route MINIMALLY " << endl;
+	        f->ph = 2;
+	        f->min = 1;
+          f->tail_flit->min = 1;
+
+          // HANS: For debugging
+          //if (!f->force_min)
+          //if ((!f->force_min) && (min_out_port == non_out_port))
+          // if ((!f->force_min) && (src_router == 0) && (dest_router == 255))
+            cout << GetSimTime() << " - ROUTE MIN DGB - ID: " << f->id << " | SrcRouter: " << r->GetID() << " | DestRouter: " << dest_router << " | MinPort: " << min_out_port << " | NonPort: " << non_out_port << " | Hmin: " << _min_hop << " | Qmin: " << _min_queucnt << " | QminNet: " << f->q_min << " | Hnon: " << _nonmin_hop << " | Qnon: " << _nonmin_queucnt << " | Bias: " << bias << " | ForceMin: " << f->force_min << endl;
+
+          if (f->watch){
+            cout << " I AM ROUTED MINIMALLY - MinHop: " << f->h_min << endl;
+          }
+
+	      } else {
+	        // route non-minimally
+	        if (debug)  { cout << " Route NONMINIMALLY int node: " << _ran_intm << endl; }
+	        f->ph = 1;
+	        //f->intm = _ran_intm;
+	        dest = f->intm;
+	        f->min = 0;
+          f->tail_flit->min = 0;
+	        if (dest >= rID*_concentration && dest < (rID+1)*_concentration) {
+	          f->ph = 2;
+	          dest = flatfly_transformation(f->dest);
+	        }
+
+          // HANS: For debugging
+          // if ((r->GetID() == 0) && (dest_router == 255))
+            cout << GetSimTime() << " - ROUTE NON DGB - ID: " << f->id << " | SrcRouter: " << r->GetID() << " | IntmRouter: " << f->intm / gC << " | DestRouter: " << dest_router << " | Hmin: " << _min_hop << " | Qmin: " << _min_queucnt << " | QminNet: " << f->q_min << " | Hnon: " << _nonmin_hop << " | Qnon: " << _nonmin_queucnt << " | Bias: " << bias << endl;
+
+          if (f->watch){
+            cout << " I AM ROUTED NON-MINIMALLY - IntmNode: " << f->intm << " | NonHop: " << f->h_non << endl;
+          }
+	      }
+      }
+
+      // find minimal correct dimension to route through
+      out_port =  flatfly_outport(dest, rID);
+
+      // Record used credit along the minimal path
+      // if (f->min == 1){
+      //   f->q_min_total += r->GetUsedCredit(out_port);
+      //   f->tail_flit->q_min_total = f->q_min_total;
+      // }
+
+      // Record queue count of the NON path
+      if ((f->hops == 1) && (!f->force_min)){ // At 2nd hop router
+        assert(r->GetID() != (f->src / gC));
+
+        int temp_port;
+        int netto;
+
+        if (f->min == 1){
+          if (r->GetID() == (f->intm / gC))
+            temp_port = flatfly_outport(f->dest, r->GetID());
+          else
+            temp_port = flatfly_outport(f->intm, r->GetID());
+        } else {
+          assert(f->min == 0);
+          temp_port = flatfly_outport(f->dest, r->GetID());
+        }
+
+        netto = r->GetUsedCredit(temp_port) - r->GetInFlight(temp_port);
+        assert(netto >= 0);
+        f->q_count_at_2ndrouter = netto;
+        f->tail_flit->q_count_at_2ndrouter = netto;
+
+        //if ((src_router == 0) && (f->min == 0) && (r->GetID() == 15))  cout << GetSimTime() << " - HAHA - " << r->GetID() << " | " << temp_port << " | " << netto << " | " << f->min_port << " | " << f->non_port << endl;
+      }
+
+      // Record time when arriving at RC stage of the 2nd router
+      if (f->hops == 1){
+        assert(r->GetID() != (f->src / gC));
+        f->until_2ndrouter = GetSimTime() - f->lat_start - f->wire_total;
+        f->tail_flit->until_2ndrouter = GetSimTime() - f->lat_start - f->wire_total;
+      }
+
+      // if we haven't reached our destination, restrict VCs appropriately to avoid routing deadlock
+      if(out_port >= gC) {
+	      int const available_vcs = (vcEnd - vcBegin + 1) / 2;
+	      assert(available_vcs > 0);
+
+        // DGB DEFAULT: 2 VCs configuration
+        assert(vcBegin == 0);
+        assert(vcEnd == 1);
+
+	      if(f->ph == 1) { // Non-minimal routing
+	        vcBegin = 0;
+          vcEnd = 0;
+	      } else { // HANS: Beware of what you use here~
+	        assert(f->ph == 2); // Minimal, Nonminimal phase 2 routing
+
+          if (f->min == 1){
+            if (gN == 1) { // 1D Flattened Butterfly
+              vcBegin = 0; 
+              vcEnd = 1;
+            } else { // 2D Flattened Butterfly
+              assert(gN == 2); // HANS: Only support up to 2D for now..
+
+              vcBegin = 0; // 0 (Good), 1 (Bad)
+              vcEnd = 0; // 0 (Good), 1 (Bad)
+            }
+          } else {
+            vcBegin = 1;
+            vcEnd = 1;
+          }
+	      }
+      }
+
+      found = 1;
+    }
+
+    if (!found) {
+      cout << " ERROR: output not found in routing. " << endl;
+      cout << *f; exit (-1);
+    }
+
+    if (out_port >= gN*(gK-1) + gC)  {
+      cout << " ERROR: output port too big! " << endl;
+      cout << " OUTPUT select: " << out_port << endl;
+      cout << " router radix: " <<  gN*(gK-1) + gK << endl;
+      exit (-1);
+    }
+
+    if (debug) cout << "        through output port : " << out_port << endl;
+    if(gTrace) {
+      cout<<"Outport "<<out_port<<endl;
+      cout<<"Stop Mark"<<endl;
+    }
+  }
+
+  outputs->Clear( );
+
+  outputs->AddRange( out_port , vcBegin, vcEnd );
+}
+#endif
 
 //=============================================================^M
 // UGAL : calculate distance (hop cnt)  between src and destination

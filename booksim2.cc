@@ -46,6 +46,8 @@ bool gTrace;
 
 ostream * gWatchOut;
 
+bool gIsDragonfly;
+
 // Constructor
 booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
 {
@@ -94,6 +96,9 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
 
     int vc_buf_size = params.find<int>("vc_buf_size", 16, found);
     config.Assign("vc_buf_size", vc_buf_size);
+
+    int global_vc_buf_size = params.find<int>("global_vc_buf_size", -1, found);
+    config.Assign("global_vc_buf_size", global_vc_buf_size);
 
     int wait_for_tail_credit = params.find<int>("wait_for_tail_credit", 0, found);
     config.Assign("wait_for_tail_credit", wait_for_tail_credit);

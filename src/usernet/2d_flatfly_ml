@@ -35,18 +35,17 @@ vc_buf_size = 128;
 
 wait_for_tail_credit = 0;
 
-//Priority
-//priority = age;
-priority = none;
-
 //
 // Router architecture
 //
-vc_allocator = islip; 
+vc_allocator = islip;
 //vc_allocator = select; 
 sw_allocator = islip;
 //sw_allocator = select;
+//alloc_iters = 1;
 alloc_iters  = 3;
+//priority = age;
+priority = none;
 
 credit_delay   = 0;
 routing_delay  = 1;
@@ -60,26 +59,24 @@ internal_speedup  = 1.6;
 
 // TRAFFIC
 warmup_periods = 3; //3
-sample_period  = 1000; //1000
+sample_period  = 1000; //2000
 max_samples = 10; //10
 sim_count     = 1;
-traffic = uniform;
-//traffic = bad_flatfly;
-//traffic = randperm
+//traffic = uniform;
+traffic = bitcomp;
+//traffic = swap2;
 //traffic = uniform_half;
-//traffic = mix_flatfly;
-//traffic = wc_perm;
-//perm_seed = 0;
+seed	= 0;
+perm_seed = 0;
 
-// FOR DYNAMIC TRAFFIC
+// DYNAMIC TRAFFIC
 //traffic1	= uniform;
-//traffic2	= bad_flatfly;
+//traffic2	= bitcomp;
 
-//traffic1	= bad_flatfly;
+//traffic1	= bitcomp;
 //traffic2	= uniform;
 
 //traffic_change_time = 3000;
-
 
 // Flatfly 
 //
@@ -91,13 +88,14 @@ traffic = uniform;
 topology = flatfly;
 subnets = 1;
 
-c  = 32; //32
-k  = 32; //32
-n  = 1;
 
-x  = 32; //32
-y  = 1;
-xr = 32; //32
+c  = 16; //9, 16, 25 
+k  = 16; //9, 16, 25
+n  = 2;
+
+x  = 16; //9, 16, 25
+y  = 16; //9, 16, 25
+xr = 16; //9, 16, 25
 yr = 1;
 
 //
@@ -106,16 +104,16 @@ yr = 1;
 //routing_function = ran_min;
 //routing_function = valiant;
 //routing_function = ugal;
-//routing_function = ugal_occupancy;
-//routing_function = ugal_inflight;
 //routing_function = ugal_inflight_avg;
+//routing_function = par;
+//routing_function = par_inflight_avg;
 routing_function = dgb;
 
 //1: batch mode, 0: injection mode
 use_read_write = 0;
 
 //for injection mode
-packet_size = 1;
+packet_size = 10;
 injection_rate = 0.2;
 injection_rate_uses_flits = 1;
 
@@ -141,14 +139,11 @@ watch_out = -;
 //Ignore channel latency
 use_noc_latency = 0;
 
-//RL-specific configs
-//n_piggyback = 10;
-
 //Dump File
-//param_data_out  = param_data.report;
-//train_data_out  = train_data.report;
-//chan_util_data_out   = chan_util_data.report;
-//qtable_data_out = qtable_data.report;
+//param_data_out = param_data.report;
+
+//RL specific configuration
+//n_piggyback = 1;
 
 //CAUTION: Recommended value is 500
 latency_thres = 500.0;

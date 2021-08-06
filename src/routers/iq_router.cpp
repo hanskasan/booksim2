@@ -192,6 +192,12 @@ IQRouter::IQRouter( Configuration const & config, Module *parent,
 
   // HANS: Additional variables
   _inflight_vect.resize(_outputs, vector<queue<int>>(_vcs));
+
+#ifdef DGB_ON
+  int max_local_buff = config.GetInt("vc_buf_size");
+  int max_global_buff = config.GetInt("global_vc_buf_size");
+  dgb = new DGB(id, _outputs, _vcs, max_local_buff, max_global_buff);
+#endif
 }
 
 IQRouter::~IQRouter( )
@@ -393,6 +399,69 @@ bool IQRouter::_ReceiveFlits( )
 
 #ifdef TRACK_FLOWS
       ++_received_flits[f->cl][input];
+#endif
+
+#ifdef DGB_ON
+#ifdef DGB_PIGGYBACK
+
+      if (((f->src / gC) != (f->dest / gC)) && (f->dgb_train) && (f->tail)){ 
+        //HANS: Ignore packets whose source router is the destination router
+        //if (0){ // HANS: For testing
+        if (this->GetID() == (f->dest / gC)){
+          assert(this->GetID() != (f->src / gC));
+
+          if (f->carry_learnset_dest){
+            this->dgb->ReceiveLearnset(f->l_dest);
+          }
+        }
+
+        if ((this->GetID() == (f->intm / gC)) && (f->min == 0)){
+
+          assert(this->GetID() != (f->src / gC));
+
+          if (f->carry_learnset_intm){
+            this->dgb->ReceiveLearnset(f->l_intm);
+          }
+        }
+      }
+
+      // HANS: For dragonfly only
+      // If receive packets from routers in the same group, get the global queue info
+      if ((input >= gC) && (input < (3 * gK - 1)) && (gIsDragonfly))
+      {
+        assert(f->carry_qlobalq);
+
+        // HANS: Make sure that the queue size is the same as the number of global ports in a router
+        unsigned int size = f->globalq.size();
+        assert(size == (unsigned)gK);
+        assert(f->globalq_net.size() == (unsigned)gK);
+
+        for (unsigned int iter = 0; iter < size; iter++)
+        {
+          int global_port_idx, global_queue;
+          
+          global_port_idx = f->globalq.front().first;
+          global_queue = f->globalq.front().second;
+
+          this->dgb->RegisterGlobalQ(global_port_idx, global_queue);
+
+          global_port_idx = f->globalq_net.front().first;
+          global_queue = f->globalq_net.front().second;
+
+          this->dgb->RegisterGlobalQNet(global_port_idx, global_queue);
+
+          f->globalq.pop();
+          f->globalq_net.pop();
+        }
+
+        f->carry_qlobalq = false;
+      }
+#endif
+
+      if (f->wire_s > -1){
+        f->wire_total += GetSimTime() - (f->wire_s + 1); // With the spirit of simple hacking: measured wire_total is always one cycle more than the actual value
+      }
+      
 #endif
 
       if(f->watch) {
@@ -2398,6 +2467,679 @@ void IQRouter::_SwitchUpdate( )
     //but there is a maximum bound based on output speed up and ST traversal
     assert(_output_buffer[output].size()<=(size_t)_output_buffer_size+ _crossbar_delay* _output_speedup+( _output_speedup-1) ||_output_buffer_size==-1);
     _crossbar_flits.pop_front();
+
+#ifdef DGB_ON
+    int src_router  = f->src / gC;
+    int dest_router = f->dest / gC;
+    int intm_router = -1;
+    if (f->intm > -1)
+      intm_router = f->intm / gC;
+
+    // DEFAULT WAY OF REGISTERING LOCAL LATENCY
+    if ((this->GetID() == src_router) && (output >= gC) && (f->dgb_train) && (f->tail)){
+    //if ((this->GetID() == src_router) && (output >= gC) && (f->dgb_train) && (f->tail) && (!f->force_min)){
+
+      int latency;
+      float diff;
+      int global_estimate;
+
+      // Record local contention
+      // f->contention = GetSimTime() - f->lat_start;
+      f->contention = 0;
+
+      if (f->min == 1){
+        unsigned int min_size;
+        diff = this->dgb->GetMyDiffMin(dest_router, &min_size);
+
+#ifdef T_EST_FROM2ND
+        // (1) Delta (DEFAULT)
+        //latency = f->q_min + ((f->h_min - 1) * (f->q_min + diff)); // HANS: Current
+        latency = f->contention + f->q_min + ((f->h_min - 1) * f->q_min) + diff;
+
+#elif defined(T_EST_END2END)
+        // (2) End-to-End
+        //latency = f->contention + diff;
+
+        // -> Decoupling
+#ifdef DECOUPLING
+        //latency = f->contention + f->h_min * (f->q_min + diff);
+        
+        if (min_size > 0){
+          // latency = f->contention + f->h_min * (f->q_min + diff + 1);
+          // if (latency < (f->contention + f->h_min))   latency = f->contention + f->h_min;
+
+#ifdef DGB_PIGGYBACK
+          if (gIsDragonfly){
+          // if (0){ // HANS: No piggybacking within a group
+            int global_queue = this->dgb->GetGlobalQNet(f->min_global_port);
+            if (global_queue < 0)   global_queue = f->q_min;
+
+            latency = f->contention + f->q_min + global_queue + diff + f->h_min;
+
+          } else {
+            latency = f->contention + f->q_min + diff + f->h_min;
+          }
+#else
+          if (gIsDragonfly)
+          // if (0) // HANS: No piggybacking within a group
+            latency = f->contention + f->q_min + f->q_min_global + diff + f->h_min;
+          else
+            latency = f->contention + f->q_min + diff + f->h_min;
+#endif
+
+          if (latency < (f->contention + f->h_min))   latency = f->contention + f->h_min;
+
+        } else {
+          assert(min_size == 0);
+
+#ifdef DGB_PIGGYBACK
+          if (gIsDragonfly){
+          // if (0){ // HANS: No piggybacking within a group
+            int global_queue = this->dgb->GetGlobalQNet(f->min_global_port);
+            if (global_queue < 0)   global_queue = f->q_min;
+
+            latency = f->contention + f->q_min + (f->h_min - 1) * global_queue;
+
+          } else {
+            latency = f->contention + f->h_min * f->q_min;
+          }
+#else
+          if (gIsDragonfly){
+          // if (0){ // HANS: No piggybacking within a group
+            latency = f->contention + f->q_min + (f->h_min - 1) * f->q_min_global;
+            //latency = f->contention + (f->h_min - 1) * f->q_min + f->q_min_global;
+          } else {
+            latency = f->contention + f->h_min * f->q_min;
+          }
+          
+#endif
+        }
+
+        // f->prediction = latency;
+        //f->diff = diff;
+
+#else // No decoupling
+
+        if (min_size > 0){
+          latency = f->contention + diff + f->h_min;
+
+          if (latency < (f->contention + f->h_min))   latency = f->contention + f->h_min;
+
+        } else {
+
+          assert(min_size == 0);
+
+#ifdef DGB_PIGGYBACK
+          if (gIsDragonfly){
+            int global_queue = this->dgb->GetGlobalQNet(f->min_global_port);
+            if (global_queue < 0)   global_queue = f->q_min;
+
+            latency = f->contention + f->q_min + (f->h_min - 1) * global_queue;
+
+          } else {
+            latency = f->contention + f->h_min * f->q_min;
+          }
+#else
+          if (gIsDragonfly){
+            latency = f->contention + f->q_min + (f->h_min - 1) * f->q_min_global;
+          } else {
+            latency = f->contention + f->h_min * f->q_min;
+          }
+          
+#endif
+
+        }
+
+        f->prediction = latency;
+        f->diff = diff;
+#endif
+
+#elif defined(T_EST_HQ_LOCAL)
+        // (3) Use H*q (local only)
+        latency = f->h_min * f->q_min;
+
+#elif defined(T_EST_HQW_GLOBAL)
+        // (4) Sum of (q-W) ((q0 - W0) + (q1 - W1) + (q2 - W2) + ...)
+        // -> No decoupling
+        //if (min_size == 0)   latency = f->h_min * f->q_min;
+        //else                 latency = diff;
+
+        // -> Decoupling
+        latency = f->h_min * (f->q_min + diff);
+#else
+        // HANS: Should not go here
+        assert(0);
+#endif
+
+        this->dgb->RegisterMinLocalLatency(dest_router, latency);
+        //this->dgb->IncrementDepartureCounter(dest_router, f->non_port, 1);
+
+#ifndef T_EST_HQ_LOCAL
+        // HANS: Obtaining more feedback
+        if ((f->min_port == f->non_port) && (!f->force_min)){
+          unsigned int non_size_sameport;
+          int non_latency;
+
+          float non_diff_sameport = this->dgb->GetMyDiffNon(dest_router, f->non_port, &non_size_sameport);
+
+          // if ((src_router == 202) && (dest_router == 213))
+          //     cout << GetSimTime() << " - NonSizeSamePort: " << non_size_sameport << endl;
+
+          if (non_size_sameport > 0){
+#ifdef DGB_PIGGYBACK
+            if (gIsDragonfly){
+            // if (0){ // HANS: No piggybacking within a group
+              int global_queue = this->dgb->GetGlobalQNet(f->non_global_port);
+              if (global_queue < 0)   global_queue = f->q_non;
+
+              // non_latency = f->contention + f->q_non + global_queue + non_diff_sameport + f->h_non;
+              non_latency = f->contention + f->q_non + (f->h_non - 1) * global_queue;
+
+            } else {
+              //non_latency = f->contention + f->q_non + non_diff_sameport + f->h_non;
+              non_latency = non_diff_sameport;
+            }
+#else
+            if (gIsDragonfly){
+            // if (0){ // HANS: No piggybacking within a group
+              //non_latency = f->contention + f->q_non + f->q_non_global + non_diff_sameport + f->h_non;
+              non_latency = f->contention + f->q_non + (f->h_non - 1) * f->q_non_global;
+
+            } else {
+              // non_latency = f->contention + f->h_non * (f->q_non + non_diff_sameport + 1);
+              //non_latency = f->contention + f->q_non + non_diff_sameport + f->h_non;
+              non_latency = non_diff_sameport;
+            }
+#endif
+
+            if (non_latency < (f->contention + f->h_non))   non_latency = f->contention + f->h_non;
+
+            this->dgb->RegisterNonLocalLatency(dest_router, f->non_port, non_latency);
+
+            // if ((src_router == 0) && (dest_router == 255))
+            //   cout << GetSimTime() << " - REG_NONLOCAL_SAME_PORT - MinDiff: " << diff << " | NonDiff: " << non_diff_sameport << " | NonPort: " << f->non_port << " | NonLat: " << non_latency << " | Contention: " << f->contention << " | Qnon: " << f->q_non << " | QnonGlobal: " << f->q_non_global << endl;
+          }
+        }
+#endif
+
+        //FOR DEBUGGING
+        // if ((this->GetID() == 179) && (dest_router == 188))
+        //   cout << GetSimTime() << " - REG_MINLOCALLAT - MinPort: " << f->min_port << " | NonPort: " << f->non_port << " | MinGlobalPort: " << f->min_global_port << " | Contention: " << f->contention << " | Hmin: " << f->h_min << " | Qmin: " << f->q_min << " | Diff: " << diff << " | Latency : " << latency << " | ID: " << f->id << " | ForceMin: " << f->force_min << " | Src: " << f->src << " | Intm: " << f->intm << " | Dest: " << f->dest << endl;
+
+      } else {
+        assert(f->min == 0);
+
+        unsigned int non_size;
+        diff = this->dgb->GetMyDiffNon(dest_router, f->non_port, &non_size);
+
+#ifdef T_EST_FROM2ND
+        // (1) Delta (DEFAULT)
+        //latency = f->q_non + ((f->h_non - 1) * (f->q_non + diff)); // HANS: Current
+        latency = f->contention + f->q_non + ((f->h_non - 1) * f->q_non) + diff;
+
+#elif defined(T_EST_END2END)
+        // (2) End-to-End
+        //latency = f->contention + diff;
+
+        // -> Decoupling
+#ifdef DECOUPLING
+
+        if (non_size > 0){
+          // latency = f->contention + f->h_non * (f->q_non + diff + 1);
+          // if (latency < (f->contention + f->h_non))   latency = f->contention + f->h_non;
+
+#ifdef DGB_PIGGYBACK
+          if (gIsDragonfly){
+          // if (0){ // HANS: No piggybacking within a group
+            int global_queue = this->dgb->GetGlobalQNet(f->non_global_port);
+            if (global_queue < 0)   global_queue = f->q_non;
+
+            latency = f->contention + f->q_non + global_queue + diff + f->h_non;
+
+          } else {
+            latency = f->contention + f->q_non + diff + f->h_non;
+          }
+#else
+
+          if (gIsDragonfly){
+          // if (0) { // HANS: No piggybacking within a group
+            latency = f->contention + f->q_non + f->q_non_global + diff + f->h_non;
+          } else {
+            latency = f->contention + f->q_non + diff + f->h_non;
+          }
+#endif
+
+          if (latency < (f->contention + f->h_non))   latency = f->contention + f->h_non;
+          
+        } else {
+          assert(non_size == 0);
+
+#ifdef DGB_PIGGYBACK
+          if (gIsDragonfly){
+            int global_queue = this->dgb->GetGlobalQNet(f->non_global_port);
+            if (global_queue < 0)   global_queue = f->q_non;
+
+            latency = f->contention + f->q_non + (f->h_non - 1) * global_queue;
+          } else {
+            latency = f->contention + f->h_non * f->q_non;
+          }
+#else
+          if (gIsDragonfly){
+          // if (0) { // HANS: No piggybacking within a group
+            latency = f->contention + f->q_non + (f->h_non - 1) * f->q_non_global;
+            //latency = f->contention + (f->h_non - 2) * f->q_non + 2 * f->q_non_global;
+          } else {
+            latency = f->contention + f->h_non * f->q_non;
+          }
+#endif
+        }
+
+        // /f->prediction = latency;
+        //f->diff = diff;
+        
+#else // No decoupling
+
+        if (non_size > 0){
+         
+          latency = f->contention + diff + f->h_non;
+
+          if (latency < (f->contention + f->h_non))   latency = f->contention + f->h_non;
+          
+        } else {
+          assert(non_size == 0);
+
+#ifdef DGB_PIGGYBACK
+          if (gIsDragonfly){
+          // if (0){ // HANS: No piggybacking within a group
+            int global_queue = this->dgb->GetGlobalQNet(f->non_global_port);
+            if (global_queue < 0)   global_queue = f->q_non;
+
+            latency = f->contention + f->q_non + (f->h_non - 1) * global_queue;
+          } else {
+            latency = f->contention + f->h_non * f->q_non;
+          }
+#else
+          if (gIsDragonfly){
+          // if (0){ // HANS: No piggybacking within a group
+            latency = f->contention + f->q_non + (f->h_non - 1) * f->q_non_global;
+          } else {
+            latency = f->contention + f->h_non * f->q_non;
+          }
+#endif
+        }
+
+        f->prediction = latency;
+        f->diff = diff;
+#endif
+
+#elif defined(T_EST_HQ_LOCAL)
+        // (3) Use H*q (local only)
+        latency = f->h_non * f->q_non;
+
+#elif defined(T_EST_HQW_GLOBAL)
+        // (4) Sum of (q-W) ((q0 - W0) + (q1 - W1) + (q2 - W2) + ...)
+        // -> No decoupling
+        // if (non_size == 0)   latency = f->h_non * f->q_non;
+        // else                 latency = diff;
+
+        // -> Decoupling
+        latency = f->h_non * (f->q_non + diff);
+
+#else
+        // HANS: Should not go here
+        assert(0);
+#endif
+
+        this->dgb->RegisterNonLocalLatency(dest_router, f->non_port, latency);
+        //this->dgb->IncrementDepartureCounter(dest_router, f->non_port, 0);
+
+        // HANS: Obtaining More Feedback
+#ifndef T_EST_HQ_LOCAL
+        if ((f->min_port == f->non_port) && (!f->force_min)){
+          unsigned int min_size_sameport;
+          int min_latency_sameport;
+
+          float min_diff_sameport = this->dgb->GetMyDiffMin(dest_router, &min_size_sameport);
+
+          if (min_size_sameport > 0){
+            // min_latency_sameport = f->contention + f->h_min * (f->q_min + min_diff_sameport);
+
+#ifdef DGB_PIGGYBACK
+            if (gIsDragonfly){
+            // if (0){ // HANS: No piggybacking within a group
+              int global_queue = this->dgb->GetGlobalQNet(f->min_global_port);
+              if (global_queue < 0)   global_queue = f->q_min;
+
+              //min_latency_sameport = f->contention + f->q_min + global_queue + min_diff_sameport + f->h_min;
+              min_latency_sameport = f->contention + f->q_min + (f->h_min - 1) * global_queue;
+
+            } else {
+              //min_latency_sameport = f->contention + f->q_min + min_diff_sameport + f->h_min;
+              min_latency_sameport = min_diff_sameport;
+            }
+#else
+            if (gIsDragonfly){
+            // if (0){ // HANS: No piggybacking within a group
+              // min_latency_sameport = f->contention + f->q_min + f->q_min_global + min_diff_sameport + f->h_min;
+              min_latency_sameport = f->contention + f->q_min + (f->h_min - 1) * f->q_min_global;
+
+            } else {
+              //min_latency_sameport = f->contention + f->q_min + min_diff_sameport + f->h_min;
+              min_latency_sameport = min_diff_sameport;
+            }
+#endif
+
+            if (min_latency_sameport < (f->contention + f->h_min)){
+              min_latency_sameport = f->contention + f->h_min;
+            }
+
+            this->dgb->RegisterMinLocalLatency(dest_router, min_latency_sameport);
+
+            // if ((src_router == 0) && (dest_router == 255))
+            //   cout << GetSimTime() << " - REG_LOCAL_SAME_PORT - MinDiff: " << min_diff_sameport << " | MinLat: " << min_latency_sameport << endl;
+          }
+          
+        }
+#endif
+
+        // FOR DEBUGGING
+        // if ((this->GetID() == 179) && (dest_router == 188) && (f->min_port == f->non_port))
+        //   cout << GetSimTime() << " - REG_NONLOCALLAT - MinPort: " << f->min_port << " | NonPort: " << f->non_port << " | Contention: " << f->contention << " | Hnon: " << f->h_non << " | Qnon: " << f->q_non << " | QnonGlobal: " << f->q_non_global << " | Diff: " << diff << " | Latency : " << latency << " | fID: " << f->id << endl;
+      }
+
+       assert(f->lat_start >= 0);
+       
+       // Negative latency is not allowed
+       //1) Hans's Ratio and Prof. John's Ratio
+       //assert(latency >= 0);
+       //2) Delta
+       if (latency < 0) latency = 0;
+
+      //this->dgb->RegisterContention(f->min_port, f->min, f->contention);   
+
+      // HANS: To measure global info
+      //f->lat_start = GetSimTime();
+
+      // FOR DEBUGGING
+      // unsigned int dummy;
+      // if ((this->GetID() == 61) && (dest_router == 130)){
+      //   cout << GetSimTime() << " - MIN_DIFF: " << this->dgb->GetMyLatencyMin(dest_router, &dummy) << endl;
+
+      //   cout << GetSimTime() << " - NON_DIFF: ";
+      //   for (int iter = 0; iter < _outputs - gC; iter++){
+      //     cout << this->dgb->GetMyDiffNon(dest_router, iter, &dummy) << " | ";
+      //   }
+      //   cout << endl;
+      // }
+
+    }
+
+    // Record time when the packet leaves the source router
+    // if (this->GetID() != src_router){
+    //   f->lat_per_hop.push_back(GetSimTime() - f->latest_send_time);
+    // } else {
+    //   f->lat_per_hop.push_back(GetSimTime() - f->lat_start);
+    // }
+
+    //f->latest_send_time = GetSimTime();
+
+    // if (this->GetID() == src_router)
+    //   f->send_time = GetSimTime();
+
+    // if (f->hops == 2)
+    //   f->send_time_2ndrouter = GetSimTime();
+
+    // FOR DRAGONFLY
+    //int node_per_group = 2 * gC * gC;
+    //int src_group = f->src / node_per_group;
+    //int this_group = this->GetID() / node_per_group;
+
+    // Arrive at the destination router
+    if ((this->GetID() != src_router) && (this->GetID() == dest_router))
+    {
+      //if ((!f->force_min) && (f->dgb_train) && (f->tail)){
+      if ((f->dgb_train) && (f->tail)){
+
+        float difference = 0.0;
+        if (f->min == 1){
+          //assert(f->hq_min >= 0);
+
+          //int diff_q = f->hq_min - f->q_min;
+          int diff_q = (f->h_min - 1) * f->q_min;
+          assert(diff_q >= 0);
+
+          // HOW TO OBTAIN THE DIFFERENCE?
+#ifdef T_EST_FROM2ND
+          // 1) Delta: DEFAULT
+          // WARNING: Don't forget to measure wire latency ONLY from the 2nd hop!
+          //difference = latency - diff_q;
+
+          if (f->h_min > 1)
+          {
+            // HANS: Current
+            //difference = (float)(f->q_count_from_2ndrouter - diff_q) / (float)(f->h_min - 1);
+            difference = (float)(GetSimTime() - f->send_time_2ndrouter - f->wire_total - (f->h_min - 2) - diff_q) / (float)(f->h_min - 1);
+
+            //difference = f->q_count_from_2ndrouter - diff_q;
+          }
+          else
+          {
+            assert(f->h_min == 1);
+            difference = 0.0;
+          }
+
+#elif defined(T_EST_END2END)
+          // 2) End-to-End
+          // WARNING: Don't forget to measure wire latency from the source router!
+          assert(f->lat_start >= 0);
+
+          // -> Decoupling
+#ifdef DECOUPLING
+          //difference = ((float)(GetSimTime() - f->lat_start - f->wire_total - f->contention - f->h_min) / (float)(f->h_min)) - f->q_min;
+          
+          if (gIsDragonfly){
+          // if (0){ // HANS: No piggybacking within a group
+            difference = GetSimTime() - f->lat_start - f->wire_total - f->h_min - f->q_total_srcgrp - f->contention;
+          } else {
+            difference = GetSimTime() - f->lat_start - f->wire_total - f->h_min - f->q_min - f->contention;
+          }
+
+          // FOR PAPER
+          // if ((src_router == 0) && (dest_router == 255))
+          //   cout << f->lat_start << "\t" << f->prediction << "\t" << GetSimTime() - f->lat_start - f->wire_total << "\t" << f->q_min << "\t" << f->diff << endl;
+
+#else // No decoupling
+          
+          if (gIsDragonfly){
+            difference = GetSimTime() - f->lat_start - f->wire_total - f->h_min - f->contention;
+          } else {
+            difference = GetSimTime() - f->lat_start - f->wire_total - f->h_min - f->contention;
+          }
+
+          // FOR PAPER
+          // if ((src_router == 0) && (dest_router == 255))
+          //   cout << f->lat_start << "\t" << f->prediction << "\t" << GetSimTime() - f->lat_start - f->wire_total << "\t" << f->q_min << "\t" << f->diff << endl;
+#endif
+
+#elif defined(T_EST_HQ_LOCAL)
+          // Do nothing
+
+#elif defined(T_EST_HQW_GLOBAL)
+          // 3) Sum of (q-W) ((q0 - W0) + (q1 - W1) + (q2 - W2) + ...)
+          // difference = f->q_min + f->q_count_from_2ndrouter;
+          // assert(difference >= 0);
+
+          difference = ((float)(f->q_min + f->q_count_from_2ndrouter) / (float)(f->h_min)) - f->q_min;
+
+#else
+          // HANS: Should not arrive here
+          assert(0);
+#endif
+
+          this->dgb->RegisterDiffMin(src_router, difference);
+
+          // HANS: For debugging
+          // if ((src_router == 0) && (dest_router == 1))
+          //   cout << GetSimTime() << " - REG_MINGLOBALLAT - fID: " << f->id << " | SrcRouter: " << f->src / gC << " | DestRouter: " << f->dest / gC << " | MinPort: " << f->min_port << " | Latency: " << (GetSimTime() - f->lat_start - f->wire_total) << " | Hmin: " << f->h_min << " | WireTotal: " << f->wire_total << " | Qmin: " << f->q_min << " | Diff: " << difference << endl;
+
+          // Special treatment if the MIN and NON ports are the same port
+          if ((f->min_port == f->non_port) && (!f->force_min))
+          {
+            assert(f->until_2ndrouter >= 0);
+
+#ifdef DECOUPLING
+            if (gIsDragonfly) {
+            // if (0){ // HANS: No piggybacking within a group
+              assert(f->min_port < (3 * gK - 1)); // HANS: Leveraging the fact that when this happens, it has to be a local output port
+              //difference = (f->h_non - 1) * f->q_count_at_2ndrouter; // HANS: Because we use different VC for MIN and NON path, they go to the different input buffer
+              difference = (f->until_2ndrouter - f->q_non - f->contention) + (f->h_non - 1) * f->q_count_at_2ndrouter;
+
+            } else {
+               //difference = (f->until_2ndrouter - f->q_non - f->contention) + (f->h_non - 1) * f->q_count_at_2ndrouter;
+               difference = (f->h_non - 1) * f->q_count_at_2ndrouter;
+
+            }
+
+#else // No decoupling
+
+            if (gIsDragonfly) {
+              assert(f->min_port < (3 * gK - 1)); // HANS: Leveraging the fact that when this happens, it has to be a local output port
+              difference = (f->until_2ndrouter - f->contention) + (f->h_non - 1) * f->q_count_at_2ndrouter;
+
+            } else {
+              difference = (f->until_2ndrouter - f->contention) + (f->h_non - 1) * f->q_count_at_2ndrouter;
+
+            }
+
+#endif
+            // difference = ((float)(f->until_2ndrouter + (f->h_non - 1) * f->q_count_at_2ndrouter - f->h_non) / (float)(f->h_non)) - (float)f->q_non;
+
+            assert((intm_router >= 0) && (intm_router < _num_of_routers));
+            this->dgb->RegisterDiffNon(src_router, intm_router, f->non_port, f->non_global_port % gK, difference);
+
+            // FOR DEBUGGING
+            // if ((src_router == 0) && (dest_router == 255)){
+            //   cout << f->h_non << " | " << f->until_2ndrouter << " | " << f->q_non << " | " << f->contention << " | " << f->q_count_at_2ndrouter << endl;
+            //   cout << GetSimTime() << " - REG_NONGLOBAL_SAME_PORT - SrcRouter: " << src_router << " | IntmRouter: " << intm_router << " | DestRouter: " << dest_router << " | NonPort: " << f->non_port << " | NonGlobalPort: " << f->non_global_port % gK << " | Diff: " << difference << endl;
+            // }
+          }
+        }
+        else
+        {
+          assert(f->min == 0);
+
+          int diff_q = (f->h_non - 1) * f->q_non;
+          assert(diff_q >= 0);
+
+          // HOW TO OBTAIN THE DIFFERENCE
+#ifdef T_EST_FROM2ND
+          // 1) Delta: DEFAULT
+          // WARNING: Don't forget to measure wire latency ONLY from the 2nd hop!
+          // HANS: Current
+          //difference = (float)(f->q_count_from_2ndrouter - diff_q) / (float)(f->h_non - 1);
+          difference = (float)(GetSimTime() - f->send_time_2ndrouter - f->wire_total - (f->h_non - 2) - diff_q) / (float)(f->h_non - 1);
+          //difference = f->q_count_from_2ndrouter - diff_q;
+
+#elif defined(T_EST_END2END)
+          // 2) End-to-End
+          // WARNING: Don't forget to measure wire latency from the source router!
+          assert(f->lat_start >= 0);
+
+          // -> Decoupling
+#ifdef DECOUPLING
+          // difference = ((float)(GetSimTime() - f->lat_start - f->wire_total - f->contention - f->h_non) / (float)(f->h_non)) - f->q_non;
+          
+          if (gIsDragonfly){
+          // if (0){ // HANS: No piggybacking within a group
+            difference = GetSimTime() - f->lat_start - f->wire_total - f->h_non - f->q_total_srcgrp - f->contention;
+
+          } else {
+            difference = GetSimTime() - f->lat_start - f->wire_total - f->h_non - f->q_non - f->contention;
+
+          }
+
+          // FOR PAPER
+          // if ((src_router == 0) && (dest_router == 255) && (f->non_port == 29))
+          //   cout << f->lat_start << "\t" << f->prediction << "\t" << GetSimTime() - f->lat_start - f->wire_total << "\t" << f->q_non << "\t" << f->diff << endl;
+
+#else // No decoupling
+         
+          if (gIsDragonfly){
+            difference = GetSimTime() - f->lat_start - f->wire_total - f->h_non - f->contention;
+
+          } else {
+            difference = GetSimTime() - f->lat_start - f->wire_total - f->h_non - f->contention;
+
+          }
+#endif
+
+#elif defined(T_EST_HQ_LOCAL)
+          // Do nothing
+
+#elif defined(T_EST_HQW_GLOBAL)
+          // 3) Sum of (q-W) ((q0 - W0) + (q1 - W1) + (q2 - W2) + ...)
+          // difference = f->q_non + f->q_count_from_2ndrouter;
+          // assert(difference >= 0);
+
+          difference = ((float)(f->q_non + f->q_count_from_2ndrouter) / (float)(f->h_non)) - f->q_non;
+
+#else
+          // HANS: Should not arrive here
+          assert(0);
+#endif
+
+          //if ((src_router == 0) && (dest_router == 255) && (f->min_port == f->non_port))
+          // if ((src_router == 0) && (dest_router == 255) && (f->non_port == 4))
+          //   cout << GetSimTime() << " - REG_NONGLOBALLAT - pID: " << f->pid << " | fID: " << f->id << " | SrcRouter: " << src_router << " | IntmRouter: " << f->intm / gC << " | DestRouter: " << dest_router << " | NonPort: " << f->non_port << " | Latency: " << (GetSimTime() - f->lat_start - f->wire_total) << " | Hnon: " << f->h_non << " | WireTotal: " << f->wire_total << " | Qnon: " << f->q_non << " | Diff: " << difference << endl;
+
+          assert((intm_router >= 0) && (intm_router < _num_of_routers));
+          this->dgb->RegisterDiffNon(src_router, intm_router, f->non_port, f->non_global_port % gK, difference);
+
+          // Special treatment if the MIN and NON ports are the same port
+          if ((f->min_port == f->non_port) && (!f->force_min))
+          {
+            assert(f->until_2ndrouter >= 0);
+
+#ifdef DECOUPLING
+            if (gIsDragonfly){
+            // if (0){ // HANS: No piggybacking within a group
+              assert(f->min_port < (3 * gK - 1));
+              //difference = (f->h_min - 1) * f->q_count_at_2ndrouter; // HANS: Because we use different VC for MIN and NON path
+              difference = (f->until_2ndrouter - f->q_min - f->contention) + (f->h_min - 1) * f->q_count_at_2ndrouter;
+            } else {
+              difference = (f->until_2ndrouter - f->q_min - f->contention) + (f->h_min - 1) * f->q_count_at_2ndrouter;
+            }
+
+#else // No decoupling
+            if (gIsDragonfly){
+              assert(f->min_port < (3 * gK - 1));
+              difference = (f->until_2ndrouter - f->contention) + (f->h_min - 1) * f->q_count_at_2ndrouter;
+            } else {
+              difference = (f->until_2ndrouter - f->contention) + (f->h_min - 1) * f->q_count_at_2ndrouter;
+            }
+#endif
+
+            // difference = ((float)(f->until_2ndrouter + (f->h_min - 1) * f->q_count_at_2ndrouter - f->h_min) / (float)(f->h_min)) - (float)f->q_min;
+
+            this->dgb->RegisterDiffMin(src_router, difference);
+
+            // FOR DEBUGGING
+            //if ((src_router == 0) && (dest_router == 255))
+              //cout << GetSimTime() << " - REG_GLOBAL_SAME_PORT - SrcRouter: " << src_router << " | IntmRouter: " << intm_router << " | DestRouter: " << dest_router << " | NonPort: " << f->non_port << " | Diff: " << difference << endl;
+          }
+        }
+
+        // Do training while there is available learnset
+#ifdef DGB_IDEAL
+        learnset *l = this->dgb->GenerateLearnset(src_router);
+        if (l) {
+          _next_routers[src_router]->dgb->ReceiveLearnset(l);
+        }
+#endif
+      }
+    }
+#endif
+
   }
 }
 
@@ -2442,6 +3184,45 @@ void IQRouter::_SendFlits( )
 
     // HANS: Record in-flight packets
     _inflight_vect[output][f->vc].push(GetSimTime());
+
+#ifdef DGB_ON
+
+    f->wire_s = GetSimTime();
+
+#ifdef DGB_PIGGYBACK
+
+    int src_router = f->src / gC;
+    int dest_router = f->dest / gC;
+
+    if ((output >= gC) && (this->GetID() == src_router) && (!f->force_min) && (f->dgb_train) && (src_router != dest_router)){
+      //if (0){ // HANS: For testing
+      // Sanity check
+      assert(this->GetID() != (f->dest / gC));
+      learnset *l = this->dgb->GenerateLearnset(dest_router);
+      
+      if (l) {
+        f->carry_learnset_dest = true;
+        f->l_dest = l;
+        l->id = f->id;
+      }
+
+      if (f->min == 0) {
+        assert(f->intm >= 0);
+        int intm_router = f->intm / gC;
+        learnset *l = this->dgb->GenerateLearnset(intm_router);
+        if (l) {
+          f->carry_learnset_intm = true;
+          f->l_intm = l;
+          l->id = f->id;
+        }
+      }
+      // HANS: For debugging
+      //if ((src_router == 255) && ((f->carry_learnset_intm) || (f->carry_learnset_dest)))
+      //cout << GetSimTime() << " - GenLS - ID: " << l->id << " | Src: " << f->src << " | Dest: " << f->dest << " | CarryLSIntm: " << f->carry_learnset_intm << " | CarryLSDest: " << f->carry_learnset_dest << endl;
+    }
+
+#endif
+#endif
 
       if(f->watch)
 	*gWatchOut << GetSimTime() << " | " << FullName() << " | "

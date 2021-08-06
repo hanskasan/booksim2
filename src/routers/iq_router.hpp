@@ -122,6 +122,9 @@ class IQRouter : public Router {
   vector<vector<queue<int> > > _outstanding_classes;
 #endif
 
+  // Additional variables
+  int _num_of_routers = gNodes / gC;
+
   bool _ReceiveFlits( );
   bool _ReceiveCredits( );
 

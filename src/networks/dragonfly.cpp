@@ -210,6 +210,8 @@ void DragonFlyNew::_ComputeSize( const Configuration &config )
   _grp_num_routers = gA;
   _grp_num_nodes =_grp_num_routers*gP;
 
+  // HANS: Additional variables
+  gIsDragonfly = true; // Indicate that we use dragonfly
 }
 
 void DragonFlyNew::_BuildNet( const Configuration &config )
@@ -269,6 +271,12 @@ void DragonFlyNew::_BuildNet( const Configuration &config )
     //
 
     if (_n > 1 )  { cout << " ERROR: n>1 dimension NOT supported yet... " << endl; exit(-1); }
+
+    //-------------------------------------ADDITIONAL--------------------------------
+    // CAUTION: Only for 1D-Dragonfly
+    // Allocate memory to keep the data for all the routers
+    _routers[node]->_next_routers = new Router* [_num_of_switch];
+    //----------------------------------END OF ADDITIONAL----------------------------
 
     //********************************************
     //   connect OUTPUT channels
@@ -375,6 +383,16 @@ void DragonFlyNew::_BuildNet( const Configuration &config )
     }
 
   }
+
+  //-------------------------------------ADDITIONAL--------------------------------
+  // CAUTION: For 1D-Dragonfly only
+  // Provide information so that each router has instant access to all the routers in the network.
+  for ( int node = 0; node < _num_of_switch; ++node ){
+    for ( int cnt = 0; cnt < _num_of_switch; ++cnt ){
+      _routers[node]->_next_routers[cnt] = _routers[cnt];
+    }
+  }
+  //----------------------------------END OF ADDITIONAL----------------------------
 
   cout<<"Done links"<<endl;
 }

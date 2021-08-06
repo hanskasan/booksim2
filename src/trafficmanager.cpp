@@ -746,7 +746,7 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
 #ifndef BOOKSIM_STANDALONE
         // // if (((f->pid % 1024) == 0) || ((f->pid % 1024) == 1023))
         // if (head->dest == 32)
-            //cout << GetSimTime() << " - Retired by BookSim, pid: " << f->pid << " | src: " << head->src << " | dest: " << head->dest << " | min: " << head->min << " | plat: " << f->atime - head->ctime << endl;
+            cout << GetSimTime() << " - Retired by BookSim, pid: " << f->pid << " | src: " << head->src << " | dest: " << head->dest << " | min: " << head->min << " | plat: " << f->atime - head->ctime << endl;
         _retired_pid[head->dest].push(f->pid);
 #endif
 
@@ -931,6 +931,10 @@ void TrafficManager::_GeneratePacket( int source, int stype,
         f->record = record;
         f->cl     = cl;
 
+        // HANS: Enabling DGB with large packets
+        // To keep the head flit pointer
+        Flit * head_f;
+
         _total_in_flight_flits[f->cl].insert(make_pair(f->id, f));
         if(record) {
             _measured_in_flight_flits[f->cl].insert(make_pair(f->id, f));
@@ -945,6 +949,11 @@ void TrafficManager::_GeneratePacket( int source, int stype,
             f->head = true;
             //packets are only generated to nodes smaller or equal to limit
             f->dest = packet_destination;
+
+            // HANS: Enabling DGB with large packets
+            // To keep the head flit pointer
+            head_f = f;
+
         } else {
             f->head = false;
             f->dest = -1;
@@ -967,6 +976,11 @@ void TrafficManager::_GeneratePacket( int source, int stype,
         }
         if ( i == ( size - 1 ) ) { // Tail flit
             f->tail = true;
+
+            // HANS: Enabling DGB with large packets
+            // Head flit keeps the pointer of the tail flit
+            head_f->tail_flit = f;
+            
         } else {
             f->tail = false;
         }
@@ -1033,6 +1047,12 @@ int TrafficManager::_GeneratePacketfromMotif( int source, int dest, int size, in
         f->record = record;
         f->cl     = cl;
 
+#ifdef DGB_ON
+        // HANS: Enabling DGB with large packets
+        // To keep the head flit pointer
+        Flit * head_f;
+#endif
+
         // HANS: For debugging
         // if ((f->pid == 556) || (f->pid == 557)){
         //     f->watch = true;
@@ -1052,6 +1072,13 @@ int TrafficManager::_GeneratePacketfromMotif( int source, int dest, int size, in
             f->head = true;
             //packets are only generated to nodes smaller or equal to limit
             f->dest = packet_destination;
+
+#ifdef DGB_ON
+            // HANS: Enabling DGB with large packets
+            // To keep the head flit pointer
+            head_f = f;
+#endif
+
         } else {
             f->head = false;
             f->dest = -1;
@@ -1074,6 +1101,12 @@ int TrafficManager::_GeneratePacketfromMotif( int source, int dest, int size, in
         }
         if ( i == ( size - 1 ) ) { // Tail flit
             f->tail = true;
+
+#ifdef DGB_ON
+            // HANS: Enabling DGB with large packets
+            // Head flit keeps the pointer of the tail flit
+            head_f->tail_flit = f;
+#endif
 
         } else {
             f->tail = false;

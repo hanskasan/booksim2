@@ -38,6 +38,10 @@
 #include "../channel.hpp"
 #include "../config_utils.hpp"
 
+#ifdef DGB_ON
+#include "../learning/dgb.hpp"
+#endif
+
 typedef Channel<Credit> CreditChannel;
 
 class Router : public TimedModule {
@@ -88,12 +92,21 @@ protected:
   vector<int> _crossbar_conflict_stalls;
 #endif
 
-  // Additional variables
+  // HANS: Additional variables
   mutable vector<vector<queue<int> > > _inflight_vect;
 
   virtual void _InternalStep() = 0;
 
 public:
+
+  // HANS: Additional variables
+
+  Router** _next_routers;
+
+#ifdef DGB_ON
+  DGB* dgb;
+#endif
+
   Router( const Configuration& config,
 	  Module *parent, const string & name, int id,
 	  int inputs, int outputs );

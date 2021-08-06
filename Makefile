@@ -182,22 +182,23 @@ am_libbooksim2_la_OBJECTS = booksim2.lo booksimBridge.lo \
 	src/allocators/separable.lo src/allocators/wavefront.lo \
 	src/arbiters/arbiter.lo src/arbiters/matrix_arb.lo \
 	src/arbiters/prio_arb.lo src/arbiters/roundrobin_arb.lo \
-	src/arbiters/tree_arb.lo src/networks/anynet.lo \
-	src/networks/cmesh.lo src/networks/dragonfly.lo \
-	src/networks/fattree.lo src/networks/flatfly_onchip.lo \
-	src/networks/fly.lo src/networks/kncube.lo \
-	src/networks/network.lo src/networks/qtree.lo \
-	src/networks/tree4.lo src/power/buffer_monitor.lo \
-	src/power/power_module.lo src/power/switch_monitor.lo \
-	src/routers/chaos_router.lo src/routers/event_router.lo \
-	src/routers/iq_router.lo src/routers/router.lo \
-	src/batchtrafficmanager.lo src/booksim_config.lo \
-	src/buffer_state.lo src/buffer.lo src/config_utils.lo \
-	src/credit.lo src/flit.lo src/flitchannel.lo src/injection.lo \
-	src/misc_utils.lo src/module.lo src/outputset.lo \
-	src/packet_reply_info.lo src/random_utils.lo \
-	src/rng_double_wrapper.lo src/rng_wrapper.lo src/routefunc.lo \
-	src/stats.lo src/traffic.lo src/trafficmanager.lo src/vc.lo
+	src/arbiters/tree_arb.lo src/learning/dgb.lo \
+	src/networks/anynet.lo src/networks/cmesh.lo \
+	src/networks/dragonfly.lo src/networks/fattree.lo \
+	src/networks/flatfly_onchip.lo src/networks/fly.lo \
+	src/networks/kncube.lo src/networks/network.lo \
+	src/networks/qtree.lo src/networks/tree4.lo \
+	src/power/buffer_monitor.lo src/power/power_module.lo \
+	src/power/switch_monitor.lo src/routers/chaos_router.lo \
+	src/routers/event_router.lo src/routers/iq_router.lo \
+	src/routers/router.lo src/batchtrafficmanager.lo \
+	src/booksim_config.lo src/buffer_state.lo src/buffer.lo \
+	src/config_utils.lo src/credit.lo src/flit.lo \
+	src/flitchannel.lo src/injection.lo src/misc_utils.lo \
+	src/module.lo src/outputset.lo src/packet_reply_info.lo \
+	src/random_utils.lo src/rng_double_wrapper.lo \
+	src/rng_wrapper.lo src/routefunc.lo src/stats.lo \
+	src/traffic.lo src/trafficmanager.lo src/vc.lo
 libbooksim2_la_OBJECTS = $(am_libbooksim2_la_OBJECTS)
 AM_V_lt = $(am__v_lt_$(V))
 am__v_lt_ = $(am__v_lt_$(AM_DEFAULT_VERBOSITY))
@@ -530,6 +531,7 @@ libbooksim2_la_SOURCES = \
     src/arbiters/prio_arb.cpp \
     src/arbiters/roundrobin_arb.cpp \
     src/arbiters/tree_arb.cpp \
+	src/learning/dgb.cpp \
   	src/networks/anynet.cpp \
     src/networks/cmesh.cpp \
     src/networks/dragonfly.cpp \
@@ -585,6 +587,7 @@ libbooksim2_la_SOURCES = \
     src/arbiters/prio_arb.hpp \
     src/arbiters/roundrobin_arb.hpp \
     src/arbiters/tree_arb.hpp \
+	src/learning/dgb.hpp \
   	src/networks/anynet.hpp \
     src/networks/cmesh.hpp \
     src/networks/dragonfly.hpp \
@@ -737,6 +740,14 @@ src/arbiters/roundrobin_arb.lo: src/arbiters/$(am__dirstamp) \
 	src/arbiters/$(DEPDIR)/$(am__dirstamp)
 src/arbiters/tree_arb.lo: src/arbiters/$(am__dirstamp) \
 	src/arbiters/$(DEPDIR)/$(am__dirstamp)
+src/learning/$(am__dirstamp):
+	@$(MKDIR_P) src/learning
+	@: > src/learning/$(am__dirstamp)
+src/learning/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) src/learning/$(DEPDIR)
+	@: > src/learning/$(DEPDIR)/$(am__dirstamp)
+src/learning/dgb.lo: src/learning/$(am__dirstamp) \
+	src/learning/$(DEPDIR)/$(am__dirstamp)
 src/networks/$(am__dirstamp):
 	@$(MKDIR_P) src/networks
 	@: > src/networks/$(am__dirstamp)
@@ -833,6 +844,8 @@ mostlyclean-compile:
 	-rm -f src/allocators/*.lo
 	-rm -f src/arbiters/*.$(OBJEXT)
 	-rm -f src/arbiters/*.lo
+	-rm -f src/learning/*.$(OBJEXT)
+	-rm -f src/learning/*.lo
 	-rm -f src/networks/*.$(OBJEXT)
 	-rm -f src/networks/*.lo
 	-rm -f src/power/*.$(OBJEXT)
@@ -881,6 +894,7 @@ include src/arbiters/$(DEPDIR)/matrix_arb.Plo
 include src/arbiters/$(DEPDIR)/prio_arb.Plo
 include src/arbiters/$(DEPDIR)/roundrobin_arb.Plo
 include src/arbiters/$(DEPDIR)/tree_arb.Plo
+include src/learning/$(DEPDIR)/dgb.Plo
 include src/networks/$(DEPDIR)/anynet.Plo
 include src/networks/$(DEPDIR)/cmesh.Plo
 include src/networks/$(DEPDIR)/dragonfly.Plo
@@ -955,6 +969,7 @@ clean-libtool:
 	-rm -rf src/.libs src/_libs
 	-rm -rf src/allocators/.libs src/allocators/_libs
 	-rm -rf src/arbiters/.libs src/arbiters/_libs
+	-rm -rf src/learning/.libs src/learning/_libs
 	-rm -rf src/networks/.libs src/networks/_libs
 	-rm -rf src/power/.libs src/power/_libs
 	-rm -rf src/routers/.libs src/routers/_libs
@@ -1080,6 +1095,8 @@ distclean-generic:
 	-rm -f src/allocators/$(am__dirstamp)
 	-rm -f src/arbiters/$(DEPDIR)/$(am__dirstamp)
 	-rm -f src/arbiters/$(am__dirstamp)
+	-rm -f src/learning/$(DEPDIR)/$(am__dirstamp)
+	-rm -f src/learning/$(am__dirstamp)
 	-rm -f src/networks/$(DEPDIR)/$(am__dirstamp)
 	-rm -f src/networks/$(am__dirstamp)
 	-rm -f src/power/$(DEPDIR)/$(am__dirstamp)
@@ -1096,7 +1113,7 @@ clean-am: clean-compLTLIBRARIES clean-generic clean-libtool \
 	mostlyclean-am
 
 distclean: distclean-am
-	-rm -rf ./$(DEPDIR) src/$(DEPDIR) src/allocators/$(DEPDIR) src/arbiters/$(DEPDIR) src/networks/$(DEPDIR) src/power/$(DEPDIR) src/routers/$(DEPDIR)
+	-rm -rf ./$(DEPDIR) src/$(DEPDIR) src/allocators/$(DEPDIR) src/arbiters/$(DEPDIR) src/learning/$(DEPDIR) src/networks/$(DEPDIR) src/power/$(DEPDIR) src/routers/$(DEPDIR)
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-tags
@@ -1142,7 +1159,7 @@ install-ps-am:
 installcheck-am:
 
 maintainer-clean: maintainer-clean-am
-	-rm -rf ./$(DEPDIR) src/$(DEPDIR) src/allocators/$(DEPDIR) src/arbiters/$(DEPDIR) src/networks/$(DEPDIR) src/power/$(DEPDIR) src/routers/$(DEPDIR)
+	-rm -rf ./$(DEPDIR) src/$(DEPDIR) src/allocators/$(DEPDIR) src/arbiters/$(DEPDIR) src/learning/$(DEPDIR) src/networks/$(DEPDIR) src/power/$(DEPDIR) src/routers/$(DEPDIR)
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 
