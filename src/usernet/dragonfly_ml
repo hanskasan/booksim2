@@ -65,27 +65,15 @@ max_samples    = 10; //10
 sample_period  = 1000; //Dynamic: 2000
 
 // ROUTING
-routing_function = min;
+//routing_function = min;
 //routing_function = valn;
 //routing_function = par;
-//routing_function = par_local;
-//routing_function = par_inflight;
 //routing_function = par_inflight_avg;
-//routing_function = par_ratio;
-//routing_function = par_ratio_inflight;
 //routing_function = ugal;
 //routing_function = ugal_inflight;
 //routing_function = ugal_inflight_avg;
-//routing_function = ugal_local;
-//routing_function = ugal_ratio;
-//routing_function = ugal_journal_ideal;
-//routing_function = qlearn;
-//routing_function = rlearng;
-//routing_function = rlearnn;
-//routing_function = slearn;
 //routing_function = qrouting_source;
-//routing_function = bandit;
-//routing_function = bandit_aggressive;
+routing_function = dgb;
 
 num_vcs     = 4;
 
@@ -106,7 +94,7 @@ traffic      	= uniform;
 //traffic_change_time = 3000;
 
 injection_rate = 0.1;
-packet_size = 10;
+packet_size = 1;
 injection_rate_uses_flits=1;
 
 topology = dragonflynew;

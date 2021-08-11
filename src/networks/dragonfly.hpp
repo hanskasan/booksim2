@@ -70,5 +70,32 @@ void ugal_dragonflynew( const Router *r, const Flit *f, int in_channel,
 		       OutputSet *outputs, bool inject );
 void min_dragonflynew( const Router *r, const Flit *f, int in_channel, 
 		       OutputSet *outputs, bool inject );
+void valn_dragonflynew( const Router *r, const Flit *f, int in_channel,
+		        OutputSet *outputs, bool inject );
+void ugal_inflight_avg_dragonflynew( const Router *r, const Flit *f, int in_channel,
+            OutputSet *outputs, bool inject );
+void par_inflight_avg_dragonflynew( const Router *r, const Flit *f, int in_channel,
+            OutputSet *outputs, bool inject );
+void dgb_dragonflynew( const Router *r, const Flit *f, int in_channel,
+            OutputSet *outputs, bool inject );
+
+bool IsInGroup(int rID, int grp_ID);
+bool IsTheRouter(int rID, int dest_rID);
+int GetGroupOutRouter(int src_grp_ID, int dest_grp_ID);
+int GetGroupInRouter(int src_grp_ID, int dest_grp_ID);
+int GetGlobalPort(int src_grp_ID, int dest_grp_ID);
+int GetLocalPort(int rID, int dest_rID);
+int HopCount(int rID, int dest_rID);
+int GetRoutingPort(int rID, int dest, int* out_vc, int src_vc, int dest_vc, int* isGlobal);
+int GetRoutingPort(int rID, int dest, int* out_vc, int src_vc, int dest_vc);
+int GetRoutingPort(int rID, int dest, int* isGlobal);
+int GetRoutingPort(int rID, int dest);
+int GetGroupOutPort(int grp_ID, int dest_grp_ID);
+
+// HANS: To calculate channel length difference between minimal and non-minimal path
+int GetChanDiff(int src_node, int intm_node, int dest_node);
+
+// HANS: Find intermediate node by preventing useless bandwidth to be utilized
+int GetIntmNode(int src_node, int dest_node);
 
 #endif 

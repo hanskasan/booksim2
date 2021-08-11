@@ -96,7 +96,7 @@ DGB::DGB(int rID, int outputs, int vcs, int max_local_buff, int max_global_buff)
     _non_departure_counter.resize(_num_routers, vector<int>(_outputs - gC, 0));
 
     // HYPERPARAMETERS
-    EPOCH_SIZE = 1;
+    EPOCH_SIZE = 50;
     EXPLORE_RATE = 0.1;
     LEARNING_RATE = 0.1;
 }
@@ -657,11 +657,14 @@ void DGB::DoTraining(int local_min_port, int local_non_port, int global_min_port
     // bool count_eligible = (min_size > 0) && (non_size > 0) && ((min_size + non_size) > 10);
     bool count_eligible = (min_size >= 1) && (non_size >= 1); // 2,2
     
+    bool count_enough = ((min_size + non_size) >= 3);
+
     // HANS: Turn off dynamic epoch size
     //count_eligible = false;
 
    // Check if we should do training
-    if (((GetSimTime() - _last_localtrain_time[dest_router][local_non_port]) >= EPOCH_SIZE) || (count_eligible)){
+    //if (((GetSimTime() - _last_localtrain_time[dest_router][local_non_port]) >= EPOCH_SIZE) || (count_eligible)){
+    if (((GetSimTime() - _last_localtrain_time[dest_router][local_non_port]) >= EPOCH_SIZE) || (count_eligible) || (count_enough)){
 
         // Update time
         _last_localtrain_time[dest_router][local_non_port] = GetSimTime();
@@ -784,11 +787,11 @@ void DGB::DoTraining(int local_min_port, int local_non_port, int global_min_port
             float step = LEARNING_RATE * (non_avg - min_avg);
 
             if ((step < explore_step) && (RandomFloat(1) < explore_prob)){
-                if ((non_size > 0) || (_bias_vect[dest_router][local_non_port] <= 0.0)) {
-                    explore = true;
-                    step = explore_step;
-                    _explore_vect[dest_router][local_non_port] = true;
-                } 
+                //if ((non_size > 0) || (_bias_vect[dest_router][local_non_port] <= 0.0)) {
+                explore = true;
+                step = explore_step;
+                _explore_vect[dest_router][local_non_port] = true;
+                //} 
             }
 
             _bias_vect[dest_router][local_non_port] = _bias_vect[dest_router][local_non_port] + step;
@@ -801,7 +804,7 @@ void DGB::DoTraining(int local_min_port, int local_non_port, int global_min_port
             // if ((_rID == 0) && (dest_router == 255) && (local_non_port == 4))
             // if ((_rID == 0) && (dest_router == 255))
             // if (_rID == 0)
-                cout << GetSimTime() << " - BiasStep - rID: " << _rID << " | MinPort: " << local_min_port << " | NonPort: " << local_non_port << " | DestRouter: " << dest_router << " | Step: " << step << " | CurrBias: " << _bias_vect[dest_router][local_non_port] << " | MinAvg: " << min_avg << " | NonAvg: " << non_avg << " | MinSize: " << min_size << " | NonSize: " << non_size << " | ExploreProb: " << explore_prob << " | ExploreStep: " << explore_step << " | Explore: " << explore << " | QMin: " << q_min << " | QMinNoInflight: " << q_min_noinflight << endl;
+                //cout << GetSimTime() << " - BiasStep - rID: " << _rID << " | MinPort: " << local_min_port << " | NonPort: " << local_non_port << " | DestRouter: " << dest_router << " | Step: " << step << " | CurrBias: " << _bias_vect[dest_router][local_non_port] << " | MinAvg: " << min_avg << " | NonAvg: " << non_avg << " | MinSize: " << min_size << " | NonSize: " << non_size << " | ExploreProb: " << explore_prob << " | ExploreStep: " << explore_step << " | Explore: " << explore << " | QMin: " << q_min << " | QMinNoInflight: " << q_min_noinflight << endl;
 
         } else { // No MIN and NON information
             float random = RandomFloat(1);
@@ -819,7 +822,7 @@ void DGB::DoTraining(int local_min_port, int local_non_port, int global_min_port
                 // FOR DEBUGGING
                 // if ((_rID == 0) && (dest_router == 255) && (local_non_port == local_min_port))
                 // if (_rID == 0)
-                    cout << GetSimTime() << " - SpecialExplore - SrcRouter: " << _rID << " | DestRouter: " << dest_router << " | NonPort: " << local_non_port << " | MinSize: " << min_size << " | NonSize: " << non_size << " | QminNet: " << q_min_noinflight << " | CurrBias: " << _bias_vect[dest_router][local_non_port] << " | ExploreStep: " << explore_step << " | ExploreProb: " << explore_prob << endl;
+                    //cout << GetSimTime() << " - SpecialExplore - SrcRouter: " << _rID << " | DestRouter: " << dest_router << " | NonPort: " << local_non_port << " | MinSize: " << min_size << " | NonSize: " << non_size << " | QminNet: " << q_min_noinflight << " | CurrBias: " << _bias_vect[dest_router][local_non_port] << " | ExploreStep: " << explore_step << " | ExploreProb: " << explore_prob << endl;
             } else {
                 float min_avg = 0.0;
                 float non_avg = 0.0;
@@ -934,7 +937,7 @@ void DGB::DoTraining(int local_min_port, int local_non_port, int global_min_port
                 _bias_vect[dest_router][local_non_port] = _bias_vect[dest_router][local_non_port] + emergency_step;
 
                 // if ((_rID == 8) && (dest_router == 247) && (local_non_port == local_min_port))
-                    cout << GetSimTime() << " - EMERGENCY_STEP: " << emergency_step << " | CurrBias: " << _bias_vect[dest_router][local_non_port] << " | MinSize: " << min_size << " | NonSize: " << non_size << " | MinAvg: " << min_avg << " | NonAvg: " << non_avg << " | Hnon: " << h_non << " | QnonNet: " << q_non_noinflight << " | MinPort: " << local_min_port << " | NonPort: " << local_non_port << endl;
+                    //cout << GetSimTime() << " - EMERGENCY_STEP: " << emergency_step << " | CurrBias: " << _bias_vect[dest_router][local_non_port] << " | MinSize: " << min_size << " | NonSize: " << non_size << " | MinAvg: " << min_avg << " | NonAvg: " << non_avg << " | Hnon: " << h_non << " | QnonNet: " << q_non_noinflight << " | MinPort: " << local_min_port << " | NonPort: " << local_non_port << endl;
             }
         }
 

@@ -85,7 +85,18 @@ IQRouter::IQRouter( Configuration const & config, Module *parent,
   for ( int i = 0; i < _inputs; ++i ) {
     ostringstream module_name;
     module_name << "buf_" << i;
-    _buf[i] = new Buffer(config, _outputs, this, module_name.str( ) );
+
+    // FOR 1-D DRAGONFLY
+    // Different buffer size for local and global buffers
+    if (i >= (gK + ((2 * gK) - 1)))
+    {
+      _buf[i] = new Buffer(config, _outputs, this, module_name.str(), true);
+    }
+    else
+    {
+      _buf[i] = new Buffer(config, _outputs, this, module_name.str(), false);
+    }
+
     module_name.str("");
   }
 

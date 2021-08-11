@@ -32,15 +32,22 @@
 #include "buffer.hpp"
 
 Buffer::Buffer( const Configuration& config, int outputs, 
-		Module *parent, const string& name ) :
+		Module *parent, const string& name, bool global ) :
 Module( parent, name ), _occupancy(0)
 {
   int num_vcs = config.GetInt( "num_vcs" );
 
   _size = config.GetInt("buf_size");
+  int global_buf_size = config.GetInt( "global_vc_buf_size" );
   if(_size < 0) {
-    _size = num_vcs * config.GetInt( "vc_buf_size" );
-  };
+    if (global) {
+      if (global_buf_size < 0) _size = num_vcs * config.GetInt( "vc_buf_size" );
+      else _size = num_vcs * global_buf_size;
+    }
+    else {
+      _size = num_vcs * config.GetInt( "vc_buf_size" );
+    }
+  }
 
   _vc.resize(num_vcs);
 

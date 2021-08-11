@@ -100,7 +100,7 @@ private:
     BookSimConfig       config;
     vector<Network*>    _net;
     int                 _num_motif_nodes;
-    int                 _force_singleflit;
+    int                 _force_flitsize;
     bool                _is_request_alarm;
 
     TimeConverter* _booksim_tc;
@@ -114,7 +114,6 @@ private:
 
     // Links
     //SST::Link* nic2booksim_link;
-
 };
 
 // Base class for subcomponent BookSimInterface

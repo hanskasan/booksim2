@@ -49,7 +49,7 @@ BookSimInterface::BookSimInterface(ComponentId_t id, Params& params, booksim2* p
         motif_node_name << iter_node;        
 
         // HANS: For debugging purpose, delete if not needed
-        //printf("Port: %d\n", iter_node);
+        // printf("Port: %d\n", iter_node);
 
         _booksim_link_vect[iter_node] = configureLink(motif_node_name.str(), new BookSimEvent::Handler<BookSimInterface>(this, &BookSimInterface::handle_input));
         sst_assert(_booksim_link_vect[iter_node], CALL_INFO, -1, "Error in %s: Link configuration for 'booksim_link' failed\n", getName().c_str());

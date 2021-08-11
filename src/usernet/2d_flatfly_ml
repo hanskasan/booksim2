@@ -113,7 +113,7 @@ routing_function = dgb;
 use_read_write = 0;
 
 //for injection mode
-packet_size = 10;
+packet_size = 1;
 injection_rate = 0.2;
 injection_rate_uses_flits = 1;
 

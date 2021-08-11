@@ -746,7 +746,7 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
 #ifndef BOOKSIM_STANDALONE
         // // if (((f->pid % 1024) == 0) || ((f->pid % 1024) == 1023))
         // if (head->dest == 32)
-            cout << GetSimTime() << " - Retired by BookSim, pid: " << f->pid << " | src: " << head->src << " | dest: " << head->dest << " | min: " << head->min << " | plat: " << f->atime - head->ctime << endl;
+            //cout << GetSimTime() << " - Retired by BookSim, pid: " << f->pid << " | src: " << head->src << " | dest: " << head->dest << " | min: " << head->min << " | plat: " << f->atime - head->ctime << endl;
         _retired_pid[head->dest].push(f->pid);
 #endif
 
