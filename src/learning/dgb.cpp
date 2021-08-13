@@ -97,8 +97,8 @@ DGB::DGB(int rID, int outputs, int vcs, int max_local_buff, int max_global_buff)
 
     // HYPERPARAMETERS
     EPOCH_SIZE = 50;
-    EXPLORE_RATE = 0.1;
-    LEARNING_RATE = 0.1;
+    EXPLORE_RATE = 0.25;
+    LEARNING_RATE = 0.25;
 }
 
 DGB::~DGB()

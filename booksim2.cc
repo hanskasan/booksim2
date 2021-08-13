@@ -264,7 +264,8 @@ void booksim2::Inject(BookSimEvent* event)
   // HANS: For debugging purpose, delete if not needed
   //if (((pid % 1024) == 0) || ((pid % 1024) == 1023))
   // if ((src == 0) || (src == 1))
-    // printf("%d - BookSim inject with pid: %d from src: %d to dest: %d with size: %d at: %ld\n", GetSimTime(), pid, mapped_src, mapped_dest, size, getCurrentSimCycle());
+  // if (src == 1023)
+  //   printf("%d - BookSim inject with pid: %d from src: %d to dest: %d with size: %d at: %ld\n", GetSimTime(), pid, src, dest, size, getCurrentSimCycle());
 
   booksim_event_bundle event_bundle;
   event_bundle.event = event;
@@ -288,6 +289,16 @@ bool booksim2::IsRequestAlarm()
 
 bool booksim2::BabyStep(Cycle_t cycle)
 {
+
+    if ((GetSimTime() % 1000) == 0){
+      printf("BookSim time: %d\n", GetSimTime());
+      trafficManager->UpdateStats();
+      trafficManager->DisplayStats();
+
+      printf("Outstanding: %d, Retired: %d\n", trafficManager->_PacketsOutstanding(), trafficManager->IsAllRetiredPidEmpty());
+      trafficManager->_DisplayRemaining();
+    }
+
     trafficManager->_Step();
 
     // FOR DEBUGGING PURPOSE
@@ -309,9 +320,12 @@ bool booksim2::BabyStep(Cycle_t cycle)
     }
 
     // Send event back to NIC following the order of arrival
+    bool is_empty = true;
 
     for (int iter_node = 0; iter_node < _num_motif_nodes; iter_node++){
       if (!_injected_events[iter_node].empty()){
+        is_empty = false;
+
         map<int, booksim_event_bundle>::iterator iter_map = _injected_events[iter_node].begin();
 
         while (iter_map->second.ejected){
@@ -337,20 +351,19 @@ bool booksim2::BabyStep(Cycle_t cycle)
           if (!_injected_events[iter_node].empty()){
             iter_map = _injected_events[iter_node].begin();
           } else {
-            break; // Break the while loop, proceed with the outer for loop
+            break; // Break the while loop, proceed with the outer 'for' loop
           }
         }
       }
     }
 
     // Check if there is any outstanding packet in BookSim or events to be injected to the NIC
-    if (trafficManager->_PacketsOutstanding() || !trafficManager->IsAllRetiredPidEmpty()){
+    //if (trafficManager->_PacketsOutstanding() || !trafficManager->IsAllRetiredPidEmpty()){
+    if (!is_empty){
       // Return false to indicate the clock handler should not be disabled
       _is_request_alarm = false;
       return false;
     } else {
-      // Sanity check
-      assert(_injected_events.empty());
       _is_request_alarm = true;
       return true;
     }

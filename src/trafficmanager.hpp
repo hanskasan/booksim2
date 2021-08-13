@@ -309,7 +309,9 @@ protected:
 
   virtual bool _SingleSim( );
 
+#ifdef BOOKSIM_STANDALONE
   void _DisplayRemaining( ostream & os = cout ) const;
+#endif
   
   void _LoadWatchList(const string & filename);
 
@@ -360,6 +362,10 @@ public:
   int  GetRetiredPid        (int dest);
 
   virtual void _UpdateOverallStats();
+
+#ifndef BOOKSIM_STANDALONE
+  void _DisplayRemaining( ostream & os = cout ) const;
+#endif
 
 #endif
 
