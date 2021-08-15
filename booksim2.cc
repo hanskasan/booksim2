@@ -52,7 +52,8 @@ int NodeMapping(int in, int num_motif_nodes){
     return node_map[in];
 
   } else {
-    assert(0);
+    // assert(0);
+    return in;
   }
 }
 
@@ -209,7 +210,9 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
     _is_request_alarm = false;
 
     // To keep the order of events as they were injected to the network
-    _injected_events.resize(_num_motif_nodes);
+    // _injected_events.resize(_num_motif_nodes);
+    _injected_events.resize(_num_motif_nodes, vector<deque<pair<int, booksim_event_bundle> > >(_num_motif_nodes));
+
 }
 
 booksim2::~booksim2()
@@ -265,13 +268,14 @@ void booksim2::Inject(BookSimEvent* event)
   //if (((pid % 1024) == 0) || ((pid % 1024) == 1023))
   // if ((src == 0) || (src == 1))
   // if (src == 1023)
-  //   printf("%d - BookSim inject with pid: %d from src: %d to dest: %d with size: %d at: %ld\n", GetSimTime(), pid, src, dest, size, getCurrentSimCycle());
+    // printf("%d - BookSim inject with pid: %d from src: %d to dest: %d with size: %d at: %ld\n", GetSimTime(), pid, src, dest, size, getCurrentSimCycle());
 
   booksim_event_bundle event_bundle;
   event_bundle.event = event;
   event_bundle.ejected = false;
 
-  _injected_events[mapped_dest].insert(make_pair(pid, event_bundle));
+  //_injected_events[mapped_dest].insert(make_pair(pid, event_bundle));
+  _injected_events[mapped_dest][mapped_src].push_back(make_pair(pid, event_bundle));
 
 }
 
@@ -290,12 +294,12 @@ bool booksim2::IsRequestAlarm()
 bool booksim2::BabyStep(Cycle_t cycle)
 {
 
-    if ((GetSimTime() % 1000) == 0){
+    if ((GetSimTime() > 0) && ((GetSimTime() % 1000) == 0)){
       printf("BookSim time: %d\n", GetSimTime());
       trafficManager->UpdateStats();
       trafficManager->DisplayStats();
 
-      printf("Outstanding: %d, Retired: %d\n", trafficManager->_PacketsOutstanding(), trafficManager->IsAllRetiredPidEmpty());
+      // printf("Outstanding: %d, Retired: %d\n", trafficManager->_PacketsOutstanding(), trafficManager->IsAllRetiredPidEmpty());
       trafficManager->_DisplayRemaining();
     }
 
@@ -305,23 +309,45 @@ bool booksim2::BabyStep(Cycle_t cycle)
     //printf("BabyStep at: %d\n", getCurrentSimCycle());
 
     // Raise the 'ejected' flag
-    for (int iter_node = 0; iter_node < _num_motif_nodes; iter_node++){
-      if (!trafficManager->IsRetiredPidEmpty(iter_node)){
-        int pid = trafficManager->GetRetiredPid(iter_node);
+    for (int iter_dest = 0; iter_dest < _num_motif_nodes; iter_dest++){
+      if (!trafficManager->IsRetiredPidEmpty(iter_dest)){
+        // int pid = trafficManager->GetRetiredPid(iter_node);
+        pair<int, int> couple = trafficManager->GetRetiredPid(iter_dest);
 
-        map<int, booksim_event_bundle>::iterator iter_map = _injected_events[iter_node].find(pid);
-        BookSimEvent* event = iter_map->second.event;
-        iter_map->second.ejected = true;
+        // map<int, booksim_event_bundle>::iterator iter_map = _injected_events[iter_node].find(pid);
+        // BookSimEvent* event = iter_map->second.event;
+        // iter_map->second.ejected = true;
+
+        // Find the respective entry
+        bool found = false;
+        int mapped_src = couple.second;
+
+        for (int iter_dq = 0; iter_dq < _injected_events[iter_dest][mapped_src].size(); iter_dq++){
+          if (_injected_events[iter_dest][mapped_src][iter_dq].first == couple.first){
+            found = true;
+
+            _injected_events[iter_dest][mapped_src][iter_dq].second.ejected = true;
+            BookSimEvent* event = _injected_events[iter_dest][mapped_src][iter_dq].second.event;
+
+            int dest = event->getDest();
+            int mapped_dest = NodeMapping(dest, _num_motif_nodes);
+            assert(mapped_dest == iter_dest);
+            break;
+          }
+        }
+
+        assert(found); // The entry must be available in the deque
         
-        int dest = event->getDest();
-        int mapped_dest = NodeMapping(dest, _num_motif_nodes);
-        assert(mapped_dest == iter_node);
+        // int dest = event->getDest();
+        // int mapped_dest = NodeMapping(dest, _num_motif_nodes);
+        // assert(mapped_dest == iter_node);
       }
     }
 
     // Send event back to NIC following the order of arrival
     bool is_empty = true;
 
+    /*
     for (int iter_node = 0; iter_node < _num_motif_nodes; iter_node++){
       if (!_injected_events[iter_node].empty()){
         is_empty = false;
@@ -356,6 +382,51 @@ bool booksim2::BabyStep(Cycle_t cycle)
         }
       }
     }
+    */
+
+    for (int iter_dest = 0; iter_dest < _num_motif_nodes; iter_dest++) {
+      for (int iter_src = 0; iter_src < _num_motif_nodes; iter_src++) {
+        if (!_injected_events[iter_dest][iter_src].empty()){
+          is_empty = false;
+
+          //map<int, booksim_event_bundle>::iterator iter_map = _injected_events[iter_dest].begin();
+
+          //while (iter_map->second.ejected){
+          while(_injected_events[iter_dest][iter_src].front().second.ejected){
+            // BookSimEvent* event = iter_map->second.event;
+            BookSimEvent* event = _injected_events[iter_dest][iter_src].front().second.event;
+
+            int dest = event->getDest();
+            int mapped_dest = NodeMapping(dest, _num_motif_nodes);
+            assert(mapped_dest == iter_dest);
+
+            // Tell BookSimInterface to send this event back to NIC
+            _interface->send(dest, event);
+
+            // HANS: For debugging purpose, delete if not needed
+            // printf("Retiring for node: %d at time: %ld\n", iter_dest, getCurrentSimCycle());
+
+            // Pop the entry if the event is sent back to the NIC
+            // _injected_events[iter_dest].erase(iter_map);
+            _injected_events[iter_dest][iter_src].pop_front();
+
+            // HANS: For debugging purpose, delete if not needed
+            //printf("Pop PID: %d at:%d\n", iter_map->first, GetSimTime());
+
+            // Fetch the next head
+            // if (!_injected_events[iter_dest].empty()){
+            //   iter_map = _injected_events[iter_dest].begin();
+            // } else {
+            //   break; // Break the while loop, proceed with the outer 'for' loop
+            // }
+
+            if (_injected_events[iter_dest][iter_src].empty()){
+              break; // Break the while loop, proceed with the outer 'for' loop
+            }
+          }
+        }
+      }
+    }
 
     // Check if there is any outstanding packet in BookSim or events to be injected to the NIC
     //if (trafficManager->_PacketsOutstanding() || !trafficManager->IsAllRetiredPidEmpty()){
@@ -364,6 +435,8 @@ bool booksim2::BabyStep(Cycle_t cycle)
       _is_request_alarm = false;
       return false;
     } else {
+      printf("Pause BookSim clock at time: %d\n", getCurrentSimTimeNano());
+      trafficManager->_DisplayRemaining();
       _is_request_alarm = true;
       return true;
     }

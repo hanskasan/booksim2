@@ -747,7 +747,7 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
         // // if (((f->pid % 1024) == 0) || ((f->pid % 1024) == 1023))
         // if (head->dest == 32)
             //cout << GetSimTime() << " - Retired by BookSim, pid: " << f->pid << " | src: " << head->src << " | dest: " << head->dest << " | min: " << head->min << " | plat: " << f->atime - head->ctime << endl;
-        _retired_pid[head->dest].push(f->pid);
+        _retired_pid[head->dest].push(make_pair(f->pid, f->src));
 #endif
 
         //code the source of request, look carefully, its tricky ;)
@@ -2227,6 +2227,7 @@ void TrafficManager::DisplayStats(ostream & os) const {
             << "Non packet latency average = " << _plat_non_stats[c]->Average() << endl
             << "MIN packet count           = " << _plat_min_stats[c]->NumSamples() << endl
             << "NON packet count           = " << _plat_non_stats[c]->NumSamples() << endl
+            << "Total packet count         = " << _plat_min_stats[c]->NumSamples() + _plat_non_stats[c]->NumSamples() << endl
             << "MIN packet ratio           = " << ((double)_plat_min_stats[c]->NumSamples() / ((double)_plat_min_stats[c]->NumSamples() + (double)_plat_non_stats[c]->NumSamples()) * 100) << "%" << endl
             //-------------------------------END OF ADDITIONAL-----------------------------------
             << "Network latency average = " << _nlat_stats[c]->Average() << endl
@@ -2569,11 +2570,11 @@ bool TrafficManager::IsAllRetiredPidEmpty( ) const
     return true;
 }
 
-int TrafficManager::GetRetiredPid(int dest)
+pair<int, int> TrafficManager::GetRetiredPid(int dest)
 {
-    int pid = _retired_pid[dest].front();
+    pair<int, int> couple = _retired_pid[dest].front();
     _retired_pid[dest].pop();
 
-    return pid;
+    return couple;
 }
 #endif

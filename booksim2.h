@@ -108,7 +108,8 @@ private:
 
     BookSimInterface_Base* _interface;
 
-    vector<map<int, booksim_event_bundle> > _injected_events;
+    // vector<map<int, booksim_event_bundle> > _injected_events;
+    vector<vector<deque<pair<int, booksim_event_bundle> > > > _injected_events;
 
     //void handle_new_packets(Event* ev);
 

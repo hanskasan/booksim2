@@ -278,7 +278,7 @@ protected:
 #endif
 
 #ifndef BOOKSIM_STANDALONE
-  vector<queue<int>> _retired_pid;
+  vector<queue<pair<int, int> > > _retired_pid;
 #endif
 
   // ============ Internal methods ============ 
@@ -359,7 +359,7 @@ public:
 
   bool IsRetiredPidEmpty    (int dest) const;
   bool IsAllRetiredPidEmpty () const;
-  int  GetRetiredPid        (int dest);
+  pair<int, int>  GetRetiredPid        (int dest);
 
   virtual void _UpdateOverallStats();
 
