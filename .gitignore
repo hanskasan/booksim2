@@ -9,6 +9,5 @@
 .libs/
 .dirstamp
 *.in
-*.am
 *.la
 *.lo
