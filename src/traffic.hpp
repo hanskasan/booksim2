@@ -122,6 +122,15 @@ public:
   virtual int dest(int source);
 };
 
+// HANS: Additional traffics
+class UniformRandomHalfTrafficPattern : public RandomTrafficPattern {
+public:
+  UniformRandomHalfTrafficPattern(int nodes);
+  virtual int dest(int source);
+};
+
+// HANS: End of additional traffics
+
 class UniformBackgroundTrafficPattern : public RandomTrafficPattern {
 private:
   set<int> _excluded;

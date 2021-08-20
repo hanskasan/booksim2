@@ -216,7 +216,7 @@ bool BookSimBridge::send(SimpleNetwork::Request* req, int vn) {
     int flits = ev->getSizeInFlits();
 
     // HANS: For debugging, delete if not needed
-    //printf("Make new BookSimEvent with id: %d, size: %d, flit_size: %d at %ld\n", id, flits, flit_size, getCurrentSimCycle());
+    //printf("%ld: new BookSimEvent with id: %d, size: %d, flit_size: %d\n", getCurrentSimCycle(), id, flits, flit_size);
 
     ev->setInjectionTime(getCurrentSimTimeNano());
     out_handle.queue.push(ev);

@@ -93,6 +93,8 @@ TrafficPattern * TrafficPattern::New(string const & pattern, int nodes,
     result = new RandomPermutationTrafficPattern(nodes, perm_seed);
   } else if(pattern_name == "uniform") {
     result = new UniformRandomTrafficPattern(nodes);
+  } else if(pattern_name == "uniform_half") {
+    result = new UniformRandomHalfTrafficPattern(nodes);
   } else if(pattern_name == "background") {
     vector<int> excludes = tokenize_int(params[0]);
     result = new UniformBackgroundTrafficPattern(nodes, excludes);
@@ -415,6 +417,30 @@ int UniformRandomTrafficPattern::dest(int source)
   assert((source >= 0) && (source < _nodes));
   return RandomInt(_nodes - 1);
 }
+
+// HANS: Additional traffics
+
+UniformRandomHalfTrafficPattern::UniformRandomHalfTrafficPattern(int nodes)
+  : RandomTrafficPattern(nodes)
+{
+
+}
+
+int UniformRandomHalfTrafficPattern::dest(int source)
+{
+  assert((source >= 0) && (source < _nodes));
+
+  int divisor = 2;
+
+  // UR_Half (1DFF, 2DFF, DF)
+  if (source < (_nodes / divisor)){
+    return RandomInt((_nodes / divisor) - 1);
+  } else {
+    return source;
+  }
+}
+
+// HANS: End of additional traffics
 
 UniformBackgroundTrafficPattern::UniformBackgroundTrafficPattern(int nodes, vector<int> excluded_nodes)
   : RandomTrafficPattern(nodes)

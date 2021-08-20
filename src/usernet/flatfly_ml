@@ -66,7 +66,7 @@ sim_count     = 1;
 traffic = uniform;
 //traffic = bad_flatfly;
 //traffic = randperm
-//traffic = uniform_half;
+traffic = uniform_half;
 //traffic = mix_flatfly;
 //traffic = wc_perm;
 //perm_seed = 0;
@@ -108,8 +108,8 @@ yr = 1;
 //routing_function = ugal;
 //routing_function = ugal_occupancy;
 //routing_function = ugal_inflight;
-//routing_function = ugal_inflight_avg;
-routing_function = dgb;
+routing_function = ugal_inflight_avg;
+//routing_function = dgb;
 
 //1: batch mode, 0: injection mode
 use_read_write = 0;

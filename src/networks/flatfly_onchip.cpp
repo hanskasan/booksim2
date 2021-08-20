@@ -1188,6 +1188,7 @@ void ugal_inflight_avg_flatfly_onchip( const Router *r, const Flit *f, int in_ch
 
   int _min_noinflight = _min_queucnt - _min_inflight;
   int _non_noinflight = _nonmin_queucnt - _nonmin_inflight;
+  int _non_test       = r->GetUsedCredit(non_out_port) - r->GetInFlight(non_out_port);
 
   if (_min_noinflight < 0)  _min_noinflight = 0;
   if (_non_noinflight < 0)  _non_noinflight = 0;
@@ -1195,6 +1196,7 @@ void ugal_inflight_avg_flatfly_onchip( const Router *r, const Flit *f, int in_ch
   if ((_min_hop * (_min_noinflight) <= _nonmin_hop * ((_non_noinflight) + 1)) || (f->force_min)) {
   //if (_min_hop * (_min_noinflight) <= _nonmin_hop * (_non_noinflight)) {
   //if (_min_hop * (_min_queucnt) <= _nonmin_hop * (_nonmin_queucnt)) {
+  // if ((_min_hop * (_min_queucnt) <= _nonmin_hop * (_non_test + 1)) || (f->force_min)) {
     if (debug) cout << " Route MINIMALLY " << endl;
     f->ph = 2;
     f->min = 1;
@@ -1204,14 +1206,16 @@ void ugal_inflight_avg_flatfly_onchip( const Router *r, const Flit *f, int in_ch
     //   cout << GetSimTime() << "\t" << min_out_port << "\t" << non_out_port << "\t" << _min_queucnt << "\t" << _nonmin_hop * (r->GetUsedCreditAvg(non_out_port) + 1) << "\t" << _min_noinflight << "\t" << _nonmin_hop * (_non_noinflight + 1) << "\t" << "1" << endl;
     // }
 
-    // cout << GetSimTime() << " - ROUTE MIN - SrcRouter: " << f->src / gC << ", DestRouter: " << f->dest / gC << ", Hmin: " << _min_hop << ", Qmin: " << _min_queucnt << ", QminNet: " << _min_noinflight << ", Hnon: " << _nonmin_hop << ", Qnon: " << _nonmin_queucnt << ", QnonNet: " << _non_noinflight << endl;
+    // if (r->GetID() == 0)
+    //   cout << GetSimTime() << " - ROUTE MIN - Src: " << f->src << ", Dest: " << f->dest << ", MinPort: " << min_out_port << ", Hmin: " << _min_hop << ", Qmin: " << _min_queucnt << ", QminNet: " << _min_noinflight << ", NonPort: " << non_out_port << ", Hnon: " << _nonmin_hop << ", Qnon: " << _nonmin_queucnt << ", QnonNet: " << _non_noinflight << ", QnonTest: " << _non_test << ", ForceMin: " << f->force_min << endl;
 
 
   } else {
 
     assert(!f->force_min);
 
-    // cout << GetSimTime() << " - ROUTE NON - SrcRouter: " << f->src / gC << ", DestRouter: " << f->dest / gC << ", Hmin: " << _min_hop << ", Qmin: " << _min_queucnt << ", QminNet: " << _min_noinflight << ", Hnon: " << _nonmin_hop << ", Qnon: " << _nonmin_queucnt << ", QnonNet: " << _non_noinflight << endl;
+    // if (r->GetID() == 0)
+    //   cout << GetSimTime() << " - ROUTE NON - Src: " << f->src << ", Dest: " << f->dest << ", MinPort: " << min_out_port << ", Hmin: " << _min_hop << ", Qmin: " << _min_queucnt << ", QminNet: " << _min_noinflight << ", NonPort: " << non_out_port << ", Hnon: " << _nonmin_hop << ", Qnon: " << _nonmin_queucnt << ", QnonNet: " << _non_noinflight << ", QnonTest: " << _non_test << ", ForceMin: " << f->force_min << endl;
 
     // route non-minimally
     if (debug)  { cout << " Route NONMINIMALLY int node: " << _ran_intm << endl; }
