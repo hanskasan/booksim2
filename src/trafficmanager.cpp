@@ -59,8 +59,14 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     : Module( 0, "traffic_manager" ), _net(net), _empty_network(false), _deadlock_timer(0), _reset_time(0), _drain_time(-1), _cur_id(0), _cur_pid(0), _time(0)
 {
 
+#ifndef BOOKSIM_STANDALONE
+    _jumped_time = 0;
+#endif
+
     _nodes = _net[0]->NumNodes( );
     _routers = _net[0]->NumRouters( );
+
+    cout << _nodes << " | " << _routers << endl;
 
     _vcs = config.GetInt("num_vcs");
     _subnets = config.GetInt("subnets");
@@ -200,6 +206,26 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
         }
     }
 
+#ifdef DYNAMIC_TRAFFIC
+    _load[0] = config.GetFloatArray("injection_rate1"); 
+    if(_load[0].empty()) {
+        _load[0].push_back(config.GetFloat("injection_rate1"));
+    }
+    _load[0].resize(_classes, _load[0].back());
+
+    _load[1] = config.GetFloatArray("injection_rate2"); 
+    if(_load[1].empty()) {
+        _load[1].push_back(config.GetFloat("injection_rate2"));
+    }
+    _load[1].resize(_classes, _load[1].back());
+
+    if(config.GetInt("injection_rate_uses_flits")) {
+        for(int i = 0; i < 2; ++i){
+            for(int c = 0; c < _classes; ++c)
+                _load[i][c] /= _GetAveragePacketSize(c);
+        }
+    }
+#else
     _load = config.GetFloatArray("injection_rate"); 
     if(_load.empty()) {
         _load.push_back(config.GetFloat("injection_rate"));
@@ -210,11 +236,25 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
         for(int c = 0; c < _classes; ++c)
             _load[c] /= _GetAveragePacketSize(c);
     }
+#endif
 
+#ifdef DYNAMIC_TRAFFIC
+    _change_time = config.GetInt("traffic_change_time");
+
+    _traffic[0] = config.GetStrArray("traffic1");
+    _traffic[0].resize(_classes, _traffic[0].back());
+
+    _traffic[1] = config.GetStrArray("traffic2");
+    _traffic[1].resize(_classes, _traffic[1].back());
+
+    _traffic_pattern[0].resize(_classes);
+    _traffic_pattern[1].resize(_classes);
+#else
     _traffic = config.GetStrArray("traffic");
     _traffic.resize(_classes, _traffic.back());
 
     _traffic_pattern.resize(_classes);
+#endif
 
     _class_priority = config.GetIntArray("class_priority"); 
     if(_class_priority.empty()) {
@@ -225,11 +265,24 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     vector<string> injection_process = config.GetStrArray("injection_process");
     injection_process.resize(_classes, injection_process.back());
 
+#ifdef DYNAMIC_TRAFFIC
+    _injection_process[0].resize(_classes);
+    _injection_process[1].resize(_classes);
+#else
     _injection_process.resize(_classes);
+#endif
 
     for(int c = 0; c < _classes; ++c) {
+#ifdef DYNAMIC_TRAFFIC
+        _traffic_pattern[0][c] = TrafficPattern::New(_traffic[0][c], _nodes, &config);
+        _traffic_pattern[1][c] = TrafficPattern::New(_traffic[1][c], _nodes, &config);
+
+        _injection_process[0][c] = InjectionProcess::New(injection_process[c], _nodes, _load[0][c], &config);
+        _injection_process[1][c] = InjectionProcess::New(injection_process[c], _nodes, _load[1][c], &config);
+#else
         _traffic_pattern[c] = TrafficPattern::New(_traffic[c], _nodes, &config);
         _injection_process[c] = InjectionProcess::New(injection_process[c], _nodes, _load[c], &config);
+#endif
     }
 
     // ============ Injection VC states  ============ 
@@ -449,6 +502,12 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     }
 #endif
 
+#ifndef BOOKSIM_STANDALONE
+    // ============ Synthetic background traffic ============ 
+    _synthetic_nodes = config.GetInt( "synthetic_nodes" );
+
+#endif
+
     // ============ Statistics ============ 
 
     _plat_stats.resize(_classes);
@@ -470,6 +529,12 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     _overall_min_frag.resize(_classes, 0.0);
     _overall_avg_frag.resize(_classes, 0.0);
     _overall_max_frag.resize(_classes, 0.0);
+
+    // HANS: Additional statistics
+    _plat_frequent_stats.resize(_classes);
+    // _flat_frequent_stats.resize(_classes);
+    _plat_frequent_min_stats.resize(_classes);
+    _plat_frequent_non_stats.resize(_classes);
 
     if(_pair_stats){
         _pair_plat.resize(_classes);
@@ -497,6 +562,15 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     _overall_min_accepted.resize(_classes, 0.0);
     _overall_avg_accepted.resize(_classes, 0.0);
     _overall_max_accepted.resize(_classes, 0.0);
+
+    // HANS: Additional statistics
+    _plat_min_stats.resize(_classes);
+    _plat_non_stats.resize(_classes);
+
+    _overall_avg_plat_min.resize(_classes, 0.0);
+    _overall_avg_plat_non.resize(_classes, 0.0);
+    _overall_n_plat_min.resize(_classes, 0);
+    _overall_n_plat_non.resize(_classes, 0);
 
 #ifdef TRACK_STALLS
     _buffer_busy_stalls.resize(_classes);
@@ -538,6 +612,33 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
         _hop_stats[c] = new Stats( this, tmp_name.str( ), 1.0, 20 );
         _stats[tmp_name.str()] = _hop_stats[c];
         tmp_name.str("");
+
+        // HANS: Additional statistics
+        tmp_name << "plat_min_stat_" << c;
+        _plat_min_stats[c] = new Stats( this, tmp_name.str( ), 1.0, 1000 );
+        _stats[tmp_name.str()] = _plat_min_stats[c];
+        tmp_name.str("");
+
+        tmp_name << "plat_non_stat_" << c;
+        _plat_non_stats[c] = new Stats( this, tmp_name.str( ), 1.0, 1000 );
+        _stats[tmp_name.str()] = _plat_non_stats[c];
+        tmp_name.str("");
+
+        tmp_name << "plat_frequent_stat_" << c;
+        _plat_frequent_stats[c] = new Stats( this, tmp_name.str( ), 1.0, 1000 );
+        _stats[tmp_name.str()] = _plat_frequent_stats[c];
+        tmp_name.str("");
+
+        tmp_name << "plat_frequent_min_stat_" << c;
+        _plat_frequent_min_stats[c] = new Stats( this, tmp_name.str( ), 1.0, 1000 );
+        _stats[tmp_name.str()] = _plat_frequent_min_stats[c];
+        tmp_name.str("");
+
+        tmp_name << "plat_frequent_non_stat_" << c;
+        _plat_frequent_non_stats[c] = new Stats( this, tmp_name.str( ), 1.0, 1000 );
+        _stats[tmp_name.str()] = _plat_frequent_non_stats[c];
+        tmp_name.str("");
+
 
         if(_pair_stats){
             _pair_plat[c].resize(_nodes*_nodes);
@@ -582,7 +683,14 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     _slowest_flit.resize(_classes, -1);
     _slowest_packet.resize(_classes, -1);
 
- 
+#ifndef BOOKSIM_STANDALONE
+    _sim_state = running;
+
+    _retired_pid.resize(_nodes);
+
+    _endpoint_credits.resize(_subnets, vector<queue<Credit* > >(_nodes));
+    _sst_credits.resize(_nodes, 0);
+#endif
 
 }
 
@@ -602,8 +710,16 @@ TrafficManager::~TrafficManager( )
         delete _frag_stats[c];
         delete _hop_stats[c];
 
+#ifdef DYNAMIC_TRAFFIC
+        delete _traffic_pattern[0][c];
+        delete _traffic_pattern[1][c];
+
+        delete _injection_process[0][c];
+        delete _injection_process[1][c];
+#else
         delete _traffic_pattern[c];
         delete _injection_process[c];
+#endif
         if(_pair_stats){
             for ( int i = 0; i < _nodes; ++i ) {
                 for ( int j = 0; j < _nodes; ++j ) {
@@ -613,6 +729,13 @@ TrafficManager::~TrafficManager( )
                 }
             }
         }
+
+        // HANS: Additional statistics
+        delete _plat_min_stats[c];
+        delete _plat_non_stats[c];
+        delete _plat_frequent_stats[c];
+        delete _plat_frequent_min_stats[c];
+        delete _plat_frequent_non_stats[c];
     }
   
     if(gWatchOut && (gWatchOut != &cout)) delete gWatchOut;
@@ -640,8 +763,17 @@ TrafficManager::~TrafficManager( )
 }
 
 
+#ifdef BOOKSIM_STANDALONE
 void TrafficManager::_RetireFlit( Flit *f, int dest )
+#else
+void TrafficManager::_RetireFlit( Flit *f, int subnet, int dest )
+#endif
 {
+
+#ifndef BOOKSIM_STANDALONE
+    assert(_sim_state == running);
+#endif
+
     _deadlock_timer = 0;
 
     assert(_total_in_flight_flits[f->cl].count(f->id) > 0);
@@ -673,10 +805,17 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
     if((_slowest_flit[f->cl] < 0) ||
        (_flat_stats[f->cl]->Max() < (f->atime - f->itime)))
         _slowest_flit[f->cl] = f->id;
+#ifdef BOOKSIM_STANDALONE
     _flat_stats[f->cl]->AddSample( f->atime - f->itime);
     if(_pair_stats){
         _pair_flat[f->cl][f->src*_nodes+dest]->AddSample( f->atime - f->itime );
     }
+#else
+    _flat_stats[f->cl]->AddSample( (int)(f->atime - f->itime) );
+    if(_pair_stats){
+        _pair_flat[f->cl][f->src*_nodes+dest]->AddSample( (int)(f->atime - f->itime) );
+    }
+#endif
       
     if ( f->tail ) {
         Flit * head;
@@ -701,6 +840,23 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
                        << ", dest = " << head->dest
                        << ")." << endl;
         }
+
+#ifndef BOOKSIM_STANDALONE
+        // // if (((f->pid % 1024) == 0) || ((f->pid % 1024) == 1023))
+        // if (head->dest == 32)
+            //cout << GetSimTime() << " - Retired by BookSim, pid: " << f->pid << " | src: " << head->src << " | dest: " << head->dest << " | min: " << head->min << " | plat: " << f->atime - head->ctime << endl;
+
+        if (f->cl == 0){ // Only record motif traffic
+            retired_info bundle;
+            bundle.eject_time = GetSimTime();
+            bundle.subnet = subnet;
+            bundle.sst_src = f->sst_src;
+            bundle.src = f->src;
+            bundle.pid = f->pid;
+            bundle.vc = f->vc;
+            _retired_pid[head->dest].push(bundle);
+        }
+#endif
 
         //code the source of request, look carefully, its tricky ;)
         if (f->type == Flit::READ_REQUEST || f->type == Flit::WRITE_REQUEST) {
@@ -728,20 +884,59 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
             if((_slowest_packet[f->cl] < 0) ||
                (_plat_stats[f->cl]->Max() < (f->atime - head->itime)))
                 _slowest_packet[f->cl] = f->pid;
+//#ifdef BOOKSIM_STANDALONE
             _plat_stats[f->cl]->AddSample( f->atime - head->ctime);
             _nlat_stats[f->cl]->AddSample( f->atime - head->itime);
             _frag_stats[f->cl]->AddSample( (f->atime - head->atime) - (f->id - head->id) );
+
    
             if(_pair_stats){
                 _pair_plat[f->cl][f->src*_nodes+dest]->AddSample( f->atime - head->ctime );
                 _pair_nlat[f->cl][f->src*_nodes+dest]->AddSample( f->atime - head->itime );
+            }
+// #else
+//             _plat_stats[f->cl]->AddSample( (int)(f->atime - head->ctime ));
+//             _nlat_stats[f->cl]->AddSample( (int)(f->atime - head->itime ));
+//             _frag_stats[f->cl]->AddSample( (int)((f->atime - head->atime) - (f->id - head->id)) );
+   
+//             if(_pair_stats){
+//                 _pair_plat[f->cl][f->src*_nodes+dest]->AddSample( (int)(f->atime - head->ctime) );
+//                 _pair_nlat[f->cl][f->src*_nodes+dest]->AddSample( (int)(f->atime - head->itime) );
+//             }
+// #endif
+
+#ifndef BOOKSIM_STANDALONE
+            if (f->cl == 0){ // Only record motif traffic
+                int plat_class_idx = (f->atime - head->ctime) / _resolution;
+                if (plat_class_idx > (_num_cell - 1))     plat_class_idx = _num_cell - 1;
+                _plat_class[plat_class_idx]++;
+
+                int nlat_class_idx = (f->atime - head->itime) / _resolution;
+                if (nlat_class_idx > (_num_cell - 1))     nlat_class_idx = _num_cell - 1;
+                _nlat_class[nlat_class_idx]++;
+
+                if ((f->atime - head->ctime) > _max_plat)
+                    _max_plat = f->atime - head->ctime;
+            }
+#endif
+
+             // HANS: Additional statistics
+            _plat_frequent_stats[f->cl]->AddSample( f->atime - head->ctime);
+
+            // HANS: Record MIN and NON packets
+            if (head->min == 1){
+                _plat_min_stats[f->cl]->AddSample( f->atime - head->ctime );
+                _plat_frequent_min_stats[f->cl]->AddSample( f->atime - head->ctime);
+            } else {
+                assert(head->min == 0);
+                _plat_non_stats[f->cl]->AddSample( f->atime - head->ctime );
+                _plat_frequent_non_stats[f->cl]->AddSample( f->atime - head->ctime);
             }
         }
     
         if(f != head) {
             head->Free();
         }
-    
     }
   
     if(f->head && !f->tail) {
@@ -764,7 +959,14 @@ int TrafficManager::_IssuePacket( int source, int cl )
         } else {
       
             //produce a packet
+#ifdef DYNAMIC_TRAFFIC
+            bool is_produce;
+            if (GetSimTime() < _change_time)    is_produce =  _injection_process[0][cl]->test(source);
+            else                                is_produce =  _injection_process[1][cl]->test(source);
+            if(is_produce){
+#else
             if(_injection_process[cl]->test(source)) {
+#endif
 	
                 //coin toss to determine request type.
                 result = (RandomFloat() < _write_fraction[cl]) ? 2 : 1;
@@ -773,7 +975,12 @@ int TrafficManager::_IssuePacket( int source, int cl )
             }
         }
     } else { //normal mode
+#ifdef DYNAMIC_TRAFFIC
+        if (GetSimTime() < _change_time)        result = _injection_process[0][cl]->test(source) ? 1 : 0;
+        else                                    result = _injection_process[1][cl]->test(source) ? 1 : 0;
+#else
         result = _injection_process[cl]->test(source) ? 1 : 0;
+#endif
         _requestsOutstanding[source]++;
     } 
     if(result != 0) {
@@ -791,7 +998,13 @@ void TrafficManager::_GeneratePacket( int source, int stype,
     int size = _GetNextPacketSize(cl); //input size 
     int pid = _cur_pid++;
     assert(_cur_pid);
+#ifdef DYNAMIC_TRAFFIC
+    int packet_destination;
+    if (GetSimTime() < _change_time)    packet_destination = _traffic_pattern[0][cl]->dest(source);
+    else                                packet_destination = _traffic_pattern[1][cl]->dest(source);
+#else
     int packet_destination = _traffic_pattern[cl]->dest(source);
+#endif
     bool record = false;
     bool watch = gWatchOut && (_packets_to_watch.count(pid) > 0);
     if(_use_read_write[cl]){
@@ -864,6 +1077,12 @@ void TrafficManager::_GeneratePacket( int source, int stype,
         f->record = record;
         f->cl     = cl;
 
+        // HANS: Enabling DGB with large packets
+        // To keep the head flit pointer
+#ifdef DGB_ON
+        Flit * head_f;
+#endif
+
         _total_in_flight_flits[f->cl].insert(make_pair(f->id, f));
         if(record) {
             _measured_in_flight_flits[f->cl].insert(make_pair(f->id, f));
@@ -878,6 +1097,13 @@ void TrafficManager::_GeneratePacket( int source, int stype,
             f->head = true;
             //packets are only generated to nodes smaller or equal to limit
             f->dest = packet_destination;
+
+            // HANS: Enabling DGB with large packets
+            // To keep the head flit pointer
+#ifdef DGB_ON
+            head_f = f;
+#endif
+
         } else {
             f->head = false;
             f->dest = -1;
@@ -900,6 +1126,139 @@ void TrafficManager::_GeneratePacket( int source, int stype,
         }
         if ( i == ( size - 1 ) ) { // Tail flit
             f->tail = true;
+
+            // HANS: Enabling DGB with large packets
+            // Head flit keeps the pointer of the tail flit
+#ifdef DGB_ON
+            head_f->tail_flit = f;
+#endif
+            
+        } else {
+            f->tail = false;
+        }
+    
+        f->vc  = -1;
+
+        if ( f->watch ) { 
+            *gWatchOut << GetSimTime() << " | "
+                       << "node" << source << " | "
+                       << "Enqueuing flit " << f->id
+                       << " (packet " << f->pid
+                       << ") at time " << time
+                       << "." << endl;
+        }
+
+         // HANS: For debugging
+        // cout << "Generate background: " << f->id << " from src: " << f->src << " to dest: " << f->dest << endl;
+
+        _partial_packets[source][cl].push_back( f );
+    }
+}
+
+#ifndef BOOKSIM_STANDALONE
+int TrafficManager::_GeneratePacketfromMotif( int sst_source, int source, int dest, int size, int cl )
+{
+    Flit::FlitType packet_type = Flit::ANY_TYPE;
+    int pid = _cur_pid++;
+    assert(_cur_pid);
+    int packet_destination = dest;
+    bool record = true; // Always true, because there is no warming-up and draining phase when using motif
+    bool watch = gWatchOut && (_packets_to_watch.count(pid) > 0);     
+    int time = _time;
+
+    if ((packet_destination <0) || (packet_destination >= _nodes)) {
+        ostringstream err;
+        err << "Incorrect packet destination " << packet_destination
+            << " for stype " << packet_type;
+        Error( err.str( ) );
+    }
+
+
+    int subnetwork = ((packet_type == Flit::ANY_TYPE) ? 
+                      RandomInt(_subnets-1) :
+                      _subnet[packet_type]);
+  
+    // HANS: For debugging, delete if not needed
+    // printf("GeneratePacketFromMotif: %d, %d, %d, %d at time: %d\n", source, dest, size, cl, time);
+    
+    if ( watch ) { 
+        *gWatchOut << GetSimTime() << " | "
+                   << "node" << source << " | "
+                   << "Enqueuing packet " << pid
+                   << " at time " << time
+                   << "." << endl;
+    }
+
+    for ( int i = 0; i < size; ++i ) {
+        Flit * f  = Flit::New();
+        f->id     = _cur_id++;
+        assert(_cur_id);
+        f->pid    = pid;
+        f->watch  = watch | (gWatchOut && (_flits_to_watch.count(f->id) > 0));
+        f->watch  = false;
+        f->subnetwork = subnetwork;
+        f->sst_src = sst_source;
+        f->src     = source;
+        f->ctime   = time;
+        f->record  = record;
+        f->cl      = cl;
+
+#ifdef DGB_ON
+        // HANS: Enabling DGB with large packets
+        // To keep the head flit pointer
+        Flit * head_f;
+#endif
+
+        _total_in_flight_flits[f->cl].insert(make_pair(f->id, f));
+        if(record) {
+            _measured_in_flight_flits[f->cl].insert(make_pair(f->id, f));
+        }
+    
+        if(gTrace){
+            cout<<"New Flit "<<f->src<<endl;
+        }
+        f->type = packet_type;
+
+        if ( i == 0 ) { // Head flit
+            f->head = true;
+            //packets are only generated to nodes smaller or equal to limit
+            f->dest = packet_destination;
+
+#ifdef DGB_ON
+            // HANS: Enabling DGB with large packets
+            // To keep the head flit pointer
+            head_f = f;
+#endif
+
+        } else {
+            f->head = false;
+            f->dest = -1;
+        }
+        switch( _pri_type ) {
+        case class_based:
+            f->pri = _class_priority[cl];
+            assert(f->pri >= 0);
+            break;
+        case age_based:
+            f->pri = numeric_limits<int>::max() - time;
+            assert(f->pri >= 0);
+            break;
+        case sequence_based:
+            f->pri = numeric_limits<int>::max() - _packet_seq_no[source];
+            assert(f->pri >= 0);
+            break;
+        default:
+            f->pri = 0;
+        }
+        if ( i == ( size - 1 ) ) { // Tail flit
+            f->tail = true;
+
+#ifdef DGB_ON
+            // HANS: Enabling DGB with large packets
+            // Head flit keeps the pointer of the tail flit
+            head_f->tail_flit = f;
+#endif
+
         } else {
             f->tail = false;
         }
@@ -916,12 +1275,22 @@ void TrafficManager::_GeneratePacket( int source, int stype,
         }
 
         _partial_packets[source][cl].push_back( f );
-    }
-}
 
+        // HANS: For debugging
+        // if (source == 0)
+            // cout << GetSimTime() << " - Injection queue size: " << _partial_packets[source][cl].size() << endl;
+    }
+
+    // printf("GeneratePacketFromMotif with PID: %d\n", pid);
+
+    return pid;
+}
+#endif
+
+#ifdef BOOKSIM_STANDALONE
 void TrafficManager::_Inject(){
 
-    for ( int input = 0; input < _nodes; ++input ) {
+    for ( int input = 0; input < _nodes; ++input ) {  
         for ( int c = 0; c < _classes; ++c ) {
             // Potentially generate packets for any (input,class)
             // that is currently empty
@@ -950,6 +1319,58 @@ void TrafficManager::_Inject(){
         }
     }
 }
+#endif
+
+#ifndef BOOKSIM_STANDALONE
+int TrafficManager::_InjectMotif( int sst_source, int source, int dest, int size ){
+    // _qtime is not used because we don't use the (_partial_packets[input][c]) condition to determine whether the packet should be injected to the network.
+    // When to / not to inject is solely determined by the Motif
+
+    // if (source == 0)
+    //     cout << "InjectMotif with size: " << size << " at: " << GetSimTime() << endl;
+
+    return _GeneratePacketfromMotif( sst_source, source, dest, size, 0 ); // All motif-generated packets are assigned to class 0
+}
+
+void TrafficManager::_InjectBackground( ){
+    for ( int input = 0; input < _nodes; ++input ) {  
+        int c = 1; //Always use class 1 for background synthetic traffic
+        if ((input % gC) >= (gC - _synthetic_nodes)){ // Synthetic nodes at each router
+            // Potentially generate packets for any (input,class)
+            // that is currently empty
+            
+            // HANS: For debugging
+            // cout << GetSimTime() << " - IsEmpty: " << _partial_packets[input][c].empty() << " | class: " << c << endl;
+
+            if ( _partial_packets[input][c].empty() ) {
+                bool generated = false;
+                while( !generated && ( _qtime[input][c] <= _time ) ) {
+                    int stype = _IssuePacket( input, c );
+
+                    // HANS: For debugging
+                    // cout << GetSimTime() << " - Input: " << input << " | class: " << c << " | stype: " << stype << endl;
+    
+                    if ( stype != 0 ) { //generate a packet
+                        _GeneratePacket( input, stype, c, 
+                                         _include_queuing==1 ? 
+                                         _qtime[input][c] : _time );
+                        generated = true;
+                    }
+                    // only advance time if this is not a reply packet
+                    if(!_use_read_write[c] || (stype >= 0)){
+                        ++_qtime[input][c];
+                    }
+                }
+
+                if ( ( _sim_state == draining ) && 
+                     ( _qtime[input][c] > _drain_time ) ) {
+                    _qdrained[input][c] = true;
+                }
+            }
+        }
+    }
+}
+#endif
 
 void TrafficManager::_Step( )
 {
@@ -958,8 +1379,8 @@ void TrafficManager::_Step( )
         flits_in_flight |= !_total_in_flight_flits[c].empty();
     }
     if(flits_in_flight && (_deadlock_timer++ >= _deadlock_warn_timeout)){
+        cout << "WARNING: Possible network deadlock, is_flits_in_flight: " << flits_in_flight << ", _deadlock_timer: " << _deadlock_timer << ", _deadlock_warn_timeout: " << _deadlock_warn_timeout << endl;
         _deadlock_timer = 0;
-        cout << "WARNING: Possible network deadlock.\n";
     }
 
     vector<map<int, Flit *> > flits(_subnets);
@@ -1003,9 +1424,13 @@ void TrafficManager::_Step( )
         }
         _net[subnet]->ReadInputs( );
     }
-  
+
     if ( !_empty_network ) {
+#ifdef BOOKSIM_STANDALONE
         _Inject();
+#else
+        _InjectBackground();
+#endif
     }
 
     for(int subnet = 0; subnet < _subnets; ++subnet) {
@@ -1190,6 +1615,14 @@ void TrafficManager::_Step( )
 
                 _partial_packets[n][c].pop_front();
 
+#ifndef BOOKSIM_STANDALONE
+                // if (n == 0)
+                //     cout << "TrafficManager inject fID: " << f->id << " at: " << GetSimTime() << endl;
+
+                if (f->cl == 0) // Only consider message flits
+                    _sst_credits[n]++;
+#endif
+
 #ifdef TRACK_FLOWS
                 ++_outstanding_credits[c][subnet][n];
                 _outstanding_classes[n][subnet][f->vc].push(c);
@@ -1218,7 +1651,6 @@ void TrafficManager::_Step( )
                     Flit * const nf = _partial_packets[n][c].front();
                     nf->vc = f->vc;
                 }
-	
                 if((_sim_state == warming_up) || (_sim_state == running)) {
                     ++_sent_flits[c][n];
                     if(f->head) {
@@ -1243,6 +1675,7 @@ void TrafficManager::_Step( )
                 Flit * const f = iter->second;
 
                 f->atime = _time;
+//#ifdef BOOKSIM_STANDALONE
                 if(f->watch) {
                     *gWatchOut << GetSimTime() << " | "
                                << "node" << n << " | "
@@ -1252,14 +1685,29 @@ void TrafficManager::_Step( )
                 }
                 Credit * const c = Credit::New();
                 c->vc.insert(f->vc);
+
                 _net[subnet]->WriteCredit(c, n);
+//#endif
 	
 #ifdef TRACK_FLOWS
                 ++_ejected_flits[f->cl][n];
 #endif
-	
+
+#ifdef BOOKSIM_STANDALONE
                 _RetireFlit(f, n);
+#else
+                _RetireFlit(f, subnet, n);
+#endif
             }
+/*
+#ifndef BOOKSIM_STANDALONE
+            if (!_endpoint_credits[subnet][n].empty()){
+                Credit * const c = _endpoint_credits[subnet][n].front();
+                _net[subnet]->WriteCredit(c, n);
+                _endpoint_credits[subnet][n].pop();
+            }
+#endif
+*/
         }
         flits[subnet].clear();
         _net[subnet]->Evaluate( );
@@ -1300,6 +1748,32 @@ bool TrafficManager::_PacketsOutstanding( ) const
     return false;
 }
 
+bool TrafficManager::_PacketsOutstanding( int c ) const
+{
+    //for ( int c = 0; c < _classes; ++c ) {
+        if ( _measure_stats[c] ) {
+            if ( _measured_in_flight_flits[c].empty() ) {
+	
+                for ( int s = 0; s < _nodes; ++s ) {
+                    if ( !_qdrained[s][c] ) {
+#ifdef DEBUG_DRAIN
+                        cout << "waiting on queue " << s << " class " << c;
+                        cout << ", time = " << _time << " qtime = " << _qtime[s][c] << endl;
+#endif
+                        return true;
+                    }
+                }
+            } else {
+#ifdef DEBUG_DRAIN
+                cout << "in flight = " << _measured_in_flight_flits[c].size() << endl;
+#endif
+                return true;
+            }
+        }
+    //}
+    return false;
+}
+
 void TrafficManager::_ClearStats( )
 {
     _slowest_flit.assign(_classes, -1);
@@ -1317,6 +1791,10 @@ void TrafficManager::_ClearStats( )
         _accepted_packets[c].assign(_nodes, 0);
         _sent_flits[c].assign(_nodes, 0);
         _accepted_flits[c].assign(_nodes, 0);
+
+        // HANS: Additional statistics
+        _plat_min_stats[c]->Clear( );
+        _plat_non_stats[c]->Clear( );
 
 #ifdef TRACK_STALLS
         _buffer_busy_stalls[c].assign(_subnets*_routers, 0);
@@ -1433,8 +1911,12 @@ bool TrafficManager::_SingleSim( )
         }
     
     
-        for ( int iter = 0; iter < _sample_period; ++iter )
+        for ( int iter = 0; iter < _sample_period; ++iter ){
             _Step( );
+
+            // HANS: Show additional statistics
+            DisplayAvgLatFrequently(cout, 200);
+        }
     
         //cout << _sim_state << endl;
 
@@ -1638,8 +2120,16 @@ bool TrafficManager::Run( )
         _ClearStats( );
 
         for(int c = 0; c < _classes; ++c) {
+#ifdef DYNAMIC_TRAFFIC
+            _traffic_pattern[0][c]->reset();
+            _traffic_pattern[1][c]->reset();
+
+            _injection_process[0][c]->reset();
+            _injection_process[1][c]->reset();
+#else
             _traffic_pattern[c]->reset();
             _injection_process[c]->reset();
+#endif
         }
 
         if ( !_SingleSim( ) ) {
@@ -1718,10 +2208,21 @@ void TrafficManager::_UpdateOverallStats() {
 
         _overall_hop_stats[c] += _hop_stats[c]->Average();
 
+        // HANS: Additional statistics
+        _overall_avg_plat_min[c] += _plat_min_stats[c]->Average();
+        _overall_avg_plat_non[c] += _plat_non_stats[c]->Average();
+        _overall_n_plat_min[c] += _plat_min_stats[c]->NumSamples();
+        _overall_n_plat_non[c] += _plat_non_stats[c]->NumSamples();
+
         int count_min, count_sum, count_max;
         double rate_min, rate_sum, rate_max;
         double rate_avg;
+#ifdef BOOKSIM_STANDALONE
         double time_delta = (double)(_drain_time - _reset_time);
+#else
+        // HANS: FIXME: Maybe we have to use the SST Time instead of the BookSim time because BookSim time is not incremented when there is no outstanding packet in the network
+        double time_delta = (double)(_time - _reset_time);
+#endif
         _ComputeStats( _sent_flits[c], &count_sum, &count_min, &count_max );
         rate_min = (double)count_min / time_delta;
         rate_sum = (double)count_sum / time_delta;
@@ -1967,7 +2468,6 @@ void TrafficManager::UpdateStats() {
     if(_free_credits_out) *_free_credits_out << flush;
     if(_max_credits_out) *_max_credits_out << flush;
 #endif
-
 }
 
 void TrafficManager::DisplayStats(ostream & os) const {
@@ -1984,6 +2484,14 @@ void TrafficManager::DisplayStats(ostream & os) const {
             << "Packet latency average = " << _plat_stats[c]->Average() << endl
             << "\tminimum = " << _plat_stats[c]->Min() << endl
             << "\tmaximum = " << _plat_stats[c]->Max() << endl
+            //----------------------------------ADDITIONAL---------------------------------------
+            << "Min packet latency average = " << _plat_min_stats[c]->Average() << endl
+            << "Non packet latency average = " << _plat_non_stats[c]->Average() << endl
+            << "MIN packet count           = " << _plat_min_stats[c]->NumSamples() << endl
+            << "NON packet count           = " << _plat_non_stats[c]->NumSamples() << endl
+            << "Total packet count         = " << _plat_min_stats[c]->NumSamples() + _plat_non_stats[c]->NumSamples() << endl
+            << "MIN packet ratio           = " << ((double)_plat_min_stats[c]->NumSamples() / ((double)_plat_min_stats[c]->NumSamples() + (double)_plat_non_stats[c]->NumSamples()) * 100) << "%" << endl
+            //-------------------------------END OF ADDITIONAL-----------------------------------
             << "Network latency average = " << _nlat_stats[c]->Average() << endl
             << "\tminimum = " << _nlat_stats[c]->Min() << endl
             << "\tmaximum = " << _nlat_stats[c]->Max() << endl
@@ -2098,6 +2606,20 @@ void TrafficManager::DisplayOverallStats( ostream & os ) const {
         os << "\tmaximum = " << _overall_max_plat[c] / (double)_total_sims
            << " (" << _total_sims << " samples)" << endl;
 
+        //----------------------------------ADDITIONAL---------------------------------------
+        // HANS: These packets are retired
+        os << "\tMIN packet latency average = " << _overall_avg_plat_min[c] / (double)_total_sims
+           << " (" << _total_sims << " samples)" << endl;
+        os << "\tNON packet latency average = " << _overall_avg_plat_non[c] / (double)_total_sims
+           << " (" << _total_sims << " samples)" << endl;
+        os << "\tMIN packet count = " << _overall_n_plat_min[c] / (double)_total_sims
+           << " (" << _total_sims << " samples)" << endl;
+        os << "\tNON packet count = " << _overall_n_plat_non[c] / (double)_total_sims
+           << " (" << _total_sims << " samples)" << endl;
+        os << "\tMIN packet ratio = " << (double)_overall_n_plat_min[c] / ((double)_overall_n_plat_min[c] + (double)_overall_n_plat_non[c]) * 100 << "%"
+           << " (" << _total_sims << " samples)" << endl;
+        //-------------------------------END OF ADDITIONAL-----------------------------------
+
         os << "Network latency average = " << _overall_avg_nlat[c] / (double)_total_sims
            << " (" << _total_sims << " samples)" << endl;
         os << "\tminimum = " << _overall_min_nlat[c] / (double)_total_sims
@@ -2178,7 +2700,9 @@ string TrafficManager::_OverallStatsCSV(int c) const
     ostringstream os;
     os << _traffic[c]
        << ',' << _use_read_write[c]
+#ifndef DYNAMIC_TRAFFIC
        << ',' << _load[c]
+#endif
        << ',' << _overall_min_plat[c] / (double)_total_sims
        << ',' << _overall_avg_plat[c] / (double)_total_sims
        << ',' << _overall_max_plat[c] / (double)_total_sims
@@ -2221,6 +2745,20 @@ string TrafficManager::_OverallStatsCSV(int c) const
 void TrafficManager::DisplayOverallStatsCSV(ostream & os) const {
     for(int c = 0; c < _classes; ++c) {
         os << "results:" << c << ',' << _OverallStatsCSV() << endl;
+    }
+}
+
+void TrafficManager::DisplayAvgLatFrequently( ostream & os, int period ) const {
+    for(int c = 0; c < _classes; ++c) {
+        if ((GetSimTime() % period) == 0){
+            cout << _plat_frequent_stats[c]->Average() << endl;
+            // cout << _plat_frequent_stats[c]->Average() << "\t" << ((double)_plat_frequent_min_stats[c]->NumSamples() / ((double)_plat_frequent_min_stats[c]->NumSamples() + (double)_plat_frequent_non_stats[c]->NumSamples()) * 100) << "% " << endl;
+
+            _plat_frequent_stats[c]->Clear();
+            // _flat_frequent_stats[c]->Clear();
+            _plat_frequent_min_stats[c]->Clear();
+            _plat_frequent_non_stats[c]->Clear();
+        }
     }
 }
 
@@ -2289,3 +2827,48 @@ double TrafficManager::_GetAveragePacketSize(int cl) const
     }
     return (double)sum / (double)(_packet_size_max_val[cl] + 1);
 }
+
+// HANS: Additional functions
+#ifndef BOOKSIM_STANDALONE
+bool TrafficManager::IsRetiredPidEmpty(int dest) const
+{
+    assert((dest >= 0) && (dest < _nodes));
+    
+    return _retired_pid[dest].empty();
+}
+
+bool TrafficManager::IsAllRetiredPidEmpty( ) const
+{
+    for (int iter_node = 0; iter_node < _nodes; iter_node++){
+        if (!IsRetiredPidEmpty(iter_node)){
+            return false;
+        }
+    }
+
+    return true;
+}
+
+retired_info TrafficManager::GetRetiredPid(int dest)
+{
+    retired_info bundle = _retired_pid[dest].front();
+    _retired_pid[dest].pop();
+
+    return bundle;
+}
+
+int TrafficManager::GetSSTCredits(int src)
+{
+    int credits = _sst_credits[src];
+    _sst_credits[src] = 0;
+
+    return credits;
+}
+
+void TrafficManager::InjectEndpointCredit(int node, int subnet, int vc)
+{
+    Credit * const c = Credit::New();
+    c->vc.insert(vc);
+
+    _endpoint_credits[subnet][node].push(c);
+}
+#endif

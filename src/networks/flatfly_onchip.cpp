@@ -46,15 +46,15 @@
 //Also, half of the total vcs are used for non-minimal routing, others for minimal (for UGAL and valiant).
 
 
-#include "booksim.hpp"
+#include "../booksim.hpp"
 #include <vector>
 #include <sstream>
 #include <limits>
 #include <cmath>
 #include "flatfly_onchip.hpp"
-#include "random_utils.hpp"
-#include "misc_utils.hpp"
-#include "globals.hpp"
+#include "../random_utils.hpp"
+#include "../misc_utils.hpp"
+#include "../globals.hpp"
 
 
 
@@ -589,6 +589,9 @@ void min_flatfly( const Router *r, const Flit *f, int in_channel,
   assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
 
   int out_port;
+
+  // Always do minimal routing
+  f->min = 1;
 
   if(inject) {
 

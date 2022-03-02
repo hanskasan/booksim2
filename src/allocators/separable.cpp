@@ -35,7 +35,7 @@
 
 #include <sstream>
 
-#include "arbiter.hpp"
+#include "../arbiters/arbiter.hpp"
 
 SeparableAllocator::SeparableAllocator( Module* parent, const string& name,
 					int inputs, int outputs,

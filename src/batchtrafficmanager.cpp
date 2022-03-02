@@ -62,11 +62,19 @@ BatchTrafficManager::~BatchTrafficManager( )
   if(_sent_packets_out) delete _sent_packets_out;
 }
 
+#ifdef BOOKSIM_STANDALONE
 void BatchTrafficManager::_RetireFlit( Flit *f, int dest )
+#else
+void BatchTrafficManager::_RetireFlit( Flit *f, int subnet, int dest )
+#endif
 {
   _last_id = f->id;
   _last_pid = f->pid;
+#ifdef BOOKSIM_STANDALONE
   TrafficManager::_RetireFlit(f, dest);
+#else
+  TrafficManager::_RetireFlit(f, subnet, dest);
+#endif
 }
 
 int BatchTrafficManager::_IssuePacket( int source, int cl )
@@ -118,7 +126,11 @@ bool BatchTrafficManager::_SingleSim( )
     _last_id = -1;
     _last_pid = -1;
     _sim_state = running;
+//#ifdef BOOKSIM_STANDALONE
     int start_time = _time;
+// #else
+//     uint64_t start_time = _time;
+// #endif
     bool batch_complete;
     cout << "Sending batch " << batch_index + 1 << " (" << _batch_size << " packets)..." << endl;
     do {
@@ -165,7 +177,11 @@ bool BatchTrafficManager::_SingleSim( )
     cout << "Batch received. Time used is " << _time - sent_time << " cycles." << endl
 	 << "Last packet was " << _last_pid << ", last flit was " << _last_id << "." << endl;
 
+//#ifdef BOOKSIM_STANDALONE
     _batch_time->AddSample(_time - start_time);
+// #else
+//     _batch_time->AddSample((int)(_time - start_time));
+// #endif
 
     cout << _sim_state << endl;
 

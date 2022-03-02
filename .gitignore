@@ -3,3 +3,10 @@
 ._*
 .Apple*
 .DS_Store
+*.la
+*.lo
+.deps/
+.libs/
+Makefile
+Makefile.in
+Makefile.am

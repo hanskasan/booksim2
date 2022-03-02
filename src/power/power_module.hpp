@@ -30,10 +30,10 @@
 
 #include <map>
 
-#include "module.hpp"
-#include "network.hpp"
-#include "config_utils.hpp"
-#include "flitchannel.hpp"
+#include "../module.hpp"
+#include "../networks/network.hpp"
+#include "../config_utils.hpp"
+#include "../flitchannel.hpp"
 #include "switch_monitor.hpp"
 #include "buffer_monitor.hpp"
 

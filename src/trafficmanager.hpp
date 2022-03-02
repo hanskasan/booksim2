@@ -35,7 +35,7 @@
 
 #include "module.hpp"
 #include "config_utils.hpp"
-#include "network.hpp"
+#include "networks/network.hpp"
 #include "flit.hpp"
 #include "buffer_state.hpp"
 #include "stats.hpp"
@@ -43,6 +43,27 @@
 #include "routefunc.hpp"
 #include "outputset.hpp"
 #include "injection.hpp"
+
+// HANS: ADDITIONAL FEATURES
+// #define DYNAMIC_TRAFFIC
+
+#ifndef BOOKSIM_STANDALONE
+struct retired_info {
+  int eject_time;
+  int subnet;
+  int pid;
+  int sst_src;
+  int src;
+  int vc;
+
+  // retired_info() :
+  //   eject_time(-1),
+  //   pid(-1),
+  //   src(-1),
+  //   vc(-1)
+  //   {}
+};
+#endif
 
 //register the requests to a node
 class PacketReplyInfo;
@@ -67,7 +88,11 @@ protected:
 
   int    _classes;
 
+#ifdef DYNAMIC_TRAFFIC
+  vector<double> _load[2];
+#else
   vector<double> _load;
+#endif
 
   vector<int> _use_read_write;
   vector<double> _write_fraction;
@@ -77,14 +102,27 @@ protected:
   vector<int> _write_request_size;
   vector<int> _write_reply_size;
 
+
+#ifdef DYNAMIC_TRAFFIC
+  int _change_time;
+
+  // HANS: Currently, DYNAMIC_TRAFFIC mode only supports running up to 2 traffic for a single simulation run
+  vector<string> _traffic[2];
+#else
   vector<string> _traffic;
+#endif
 
   vector<int> _class_priority;
 
   vector<vector<int> > _last_class;
 
+#ifdef DYNAMIC_TRAFFIC
+  vector<TrafficPattern *> _traffic_pattern[2];
+  vector<InjectionProcess *> _injection_process[2];
+#else
   vector<TrafficPattern *> _traffic_pattern;
   vector<InjectionProcess *> _injection_process;
+#endif
 
   // ============ Message priorities ============ 
 
@@ -128,14 +166,25 @@ protected:
 
   // ============ deadlock ==========
 
+#ifdef BOOKSIM_STANDALONE
   int _deadlock_timer;
   int _deadlock_warn_timeout;
+#else
+  uint64_t _deadlock_timer;
+  uint64_t _deadlock_warn_timeout;
+#endif
 
   // ============ request & replies ==========================
 
   vector<int> _packet_seq_no;
   vector<list<PacketReplyInfo*> > _repliesPending;
   vector<int> _requestsOutstanding;
+
+#ifndef BOOKSIM_STANDALONE
+  // ============ Synthetic background traffic ============ 
+  int _synthetic_nodes;  
+
+#endif
 
   // ============ Statistics ============
 
@@ -158,6 +207,12 @@ protected:
   vector<double> _overall_min_frag;
   vector<double> _overall_avg_frag;
   vector<double> _overall_max_frag;
+
+  // HANS: Additional statistics
+  vector<Stats *> _plat_frequent_stats;
+  // vector<Stats *> _flat_frequent_stats;
+  vector<Stats *> _plat_frequent_min_stats;
+  vector<Stats *> _plat_frequent_non_stats;
 
   vector<vector<Stats *> > _pair_plat;
   vector<vector<Stats *> > _pair_nlat;
@@ -201,6 +256,15 @@ protected:
 
   map<string, Stats *> _stats;
 
+  // HANS: Additional statistics
+  vector<Stats *> _plat_min_stats;
+  vector<Stats *> _plat_non_stats;
+
+  vector<double> _overall_avg_plat_min;
+  vector<double> _overall_avg_plat_non;
+  vector<int   > _overall_n_plat_min;
+  vector<int   > _overall_n_plat_non;
+
   // ============ Simulation parameters ============ 
 
   enum eSimState { warming_up, running, draining, done };
@@ -231,7 +295,15 @@ protected:
 
   int _cur_id;
   int _cur_pid;
+//#ifdef BOOKSIM_STANDALONE
   int _time;
+// #else
+//   uint64_t _time;
+// #endif
+
+#ifndef BOOKSIM_STANDALONE
+  int _jumped_time;
+#endif
 
   set<int> _flits_to_watch;
   set<int> _packets_to_watch;
@@ -259,30 +331,65 @@ protected:
   ostream * _max_credits_out;
 #endif
 
+#ifndef BOOKSIM_STANDALONE
+  vector<queue< retired_info > > _retired_pid;
+  vector<vector<queue<Credit* > > > _endpoint_credits;
+  vector<int> _sst_credits;
+
+  // Record latency
+  // 0-5000, resolution 100
+  // +1 class to count packets with latency >5000
+  static const int _resolution = 100;
+  static const int _num_cell = 51;
+
+  int _plat_class[_num_cell] = {0};
+  int _nlat_class[_num_cell] = {0};
+  int _max_plat = 0;
+#endif
+
   // ============ Internal methods ============ 
 protected:
 
+#ifdef BOOKSIM_STANDALONE
   virtual void _RetireFlit( Flit *f, int dest );
+#else
+  virtual void _RetireFlit( Flit *f, int subnet, int dest );
+#endif
 
+#ifdef BOOKSIM_STANDALONE
   void _Inject();
   void _Step( );
+#endif
 
+#ifdef BOOKSIM_STANDALONE
   bool _PacketsOutstanding( ) const;
+  bool _PacketsOutstanding( int c ) const;
+#endif
   
   virtual int  _IssuePacket( int source, int cl );
   void _GeneratePacket( int source, int size, int cl, int time );
+  
+#ifndef BOOKSIM_STANDALONE
+  int _GeneratePacketfromMotif( int sst_source, int source, int dest, int size, int c );
+#endif
 
+#ifdef BOOKSIM_STANDALONE
   virtual void _ClearStats( );
+#endif
 
   void _ComputeStats( const vector<int> & stats, int *sum, int *min = NULL, int *max = NULL, int *min_pos = NULL, int *max_pos = NULL ) const;
 
   virtual bool _SingleSim( );
 
+#ifdef BOOKSIM_STANDALONE
   void _DisplayRemaining( ostream & os = cout ) const;
+#endif
   
   void _LoadWatchList(const string & filename);
 
+#ifdef BOOKSIM_STANDALONE
   virtual void _UpdateOverallStats();
+#endif
 
   virtual string _OverallStatsCSV(int c = 0) const;
 
@@ -305,8 +412,81 @@ public:
   virtual void DisplayOverallStats( ostream & os = cout ) const ;
   virtual void DisplayOverallStatsCSV( ostream & os = cout ) const ;
 
-  inline int getTime() { return _time;}
+  // HANS: Additional functions
+  virtual void DisplayAvgLatFrequently( ostream & os = cout, int period = -1 ) const ;
+
+//#ifdef BOOKSIM_STANDALONE
+  inline int getTime() { 
+    assert(_time >= 0); // Make sure that this value is not negative due to overflow
+    return _time;
+  }
+
+//#else
+  //inline uint64_t getTime() { return _time;}
+//#endif
   Stats * getStats(const string & name) { return _stats[name]; }
+
+#ifndef BOOKSIM_STANDALONE
+  bool _PacketsOutstanding( ) const;
+  bool _PacketsOutstanding( int c ) const;
+  int _CreditsOutstanding( ) {return Credit::OutStanding();}
+
+  void _Step( );
+  int _InjectMotif ( int sst_source, int source, int dest, int size );
+  void _InjectBackground ( );
+
+  bool IsRetiredPidEmpty    (int dest) const;
+  bool IsAllRetiredPidEmpty () const;
+  retired_info  GetRetiredPid        (int dest);
+  int  GetSSTCredits  (int src);
+
+  void InjectEndpointCredit (int node, int subnet, int vc);
+
+  virtual void _UpdateOverallStats();
+
+  virtual void _ClearStats( );
+
+  void _DisplayRemaining( ostream & os = cout ) const;
+
+  void jumpTime(int future) {
+    assert(future >= 0);
+    printf("Jump time from: %d to %d\n", _time, future);
+    _jumped_time += future - _time;
+    //_time = future;
+
+    for (int i = 0; i < (future - _time); i++){
+      _Step();
+    }
+  }
+
+  int getRunTime(){
+    int net_time = _time - _jumped_time;
+    assert(net_time >= 0);
+    return net_time;
+  }
+
+  void PrintPlatDistribution(){
+
+    cout << "*** PACKET LATENCY DISTRIBUTION *** " << endl;
+    for (int iter_cell = 0; iter_cell < _num_cell; iter_cell++){
+      cout << iter_cell * _resolution << "\t" << _plat_class[iter_cell] << endl;
+    }
+    cout << "*** END ***" << endl;
+    
+    cout << "Maximum packet latency: " << _max_plat << endl;
+  }
+
+  void PrintNlatDistribution(){
+
+    cout << "*** NETWORK LATENCY DISTRIBUTION *** " << endl;
+    for (int iter_cell = 0; iter_cell < _num_cell; iter_cell++){
+      cout << iter_cell * _resolution << "\t" << _nlat_class[iter_cell] << endl;
+    }
+    cout << "*** END ***" << endl;
+    
+  }
+
+#endif
 
 };
 

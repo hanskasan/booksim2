@@ -105,6 +105,7 @@ BookSimConfig::BookSimConfig( )
   
   _int_map["num_vcs"]         = 16;  
   _int_map["vc_buf_size"]     = 8;  //per vc buffer size
+  _int_map["global_vc_buf_size"]  = -1; //per vc global buffer size
   _int_map["buf_size"]        = -1; //shared buffer size
   AddStrField("buffer_policy", "private"); //buffer sharing policy
 
@@ -219,6 +220,11 @@ BookSimConfig::BookSimConfig( )
   AddStrField("read_reply_size", ""); // workaraound to allow for vector specification
   _int_map["write_reply_size"]   = 1;
   AddStrField("write_reply_size", ""); // workaraound to allow for vector specification
+
+#ifndef BOOKSIM_STANDALONE
+  // ============ Synthetic background traffic ============ 
+  _int_map["synthetic_nodes"] = 0; // number of synthetic nodes per router
+#endif
 
   //==== Simulation parameters ==========================
 

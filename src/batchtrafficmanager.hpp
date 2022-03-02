@@ -51,7 +51,11 @@ protected:
 
   ostream * _sent_packets_out;
 
+#ifdef BOOKSIM_STANDALONE
   virtual void _RetireFlit( Flit *f, int dest );
+#else
+  virtual void _RetireFlit( Flit *f, int subnet, int dest );
+#endif
 
   virtual int _IssuePacket( int source, int cl );
   virtual void _ClearStats( );

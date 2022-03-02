@@ -30,9 +30,20 @@
 
 #include <iostream>
 #include <stack>
+#include <queue>
 
 #include "booksim.hpp"
 #include "outputset.hpp"
+
+#ifdef DGB_ON
+struct learnset{
+    int id; // Record the fID
+    int gen_time;
+    int src_router; // Router who generates the learnset
+    queue<float> diff_min;
+    queue<pair<int, float>> diff_non;
+};
+#endif
 
 class Flit {
 
@@ -53,19 +64,32 @@ public:
   bool head;
   bool tail;
   
+//#ifdef BOOKSIM_STANDALONE
   int  ctime;
   int  itime;
   int  atime;
+// #else
+//   uint64_t  ctime;
+//   uint64_t  itime;
+//   uint64_t  atime;
+// #endif
 
   int  id;
   int  pid;
 
   bool record;
 
+#ifndef BOOKSIM_STANDALONE
+  int sst_src;
+#endif
   int  src;
   int  dest;
 
+#ifdef BOOKSIM_STANDALONE
   int  pri;
+#else
+  uint64_t pri;
+#endif
 
   int  hops;
   bool watch;
@@ -88,6 +112,47 @@ public:
   static Flit * New();
   void Free();
   static void FreeAll();
+
+  // HANS: Additional entries
+  mutable int min;
+  mutable bool force_min;
+
+#ifdef DGB_ON
+  mutable bool dgb_train;
+
+  mutable int   h_min;
+  mutable int   h_non;
+  mutable int   q_min;
+  mutable int   q_non;
+  mutable int   q_min_global;
+  mutable int   q_non_global;
+ 
+  mutable int   q_count_at_2ndrouter;
+  mutable int   q_total_srcgrp;
+ 
+  mutable int   min_port;
+  mutable int   non_port;
+  mutable int   min_global_port;
+  mutable int   non_global_port;
+ 
+  mutable int   contention;
+  mutable int   until_2ndrouter;
+  mutable int   lat_start;
+  mutable int   wire_s;
+  mutable int   wire_total;
+
+  mutable Flit* tail_flit;
+
+  // For piggybacking
+  mutable learnset* l_intm;
+  mutable learnset* l_dest;
+  mutable bool carry_learnset_intm;
+  mutable bool carry_learnset_dest;
+  
+  mutable queue<pair<int, int> > globalq;
+  mutable queue<pair<int, int> > globalq_net;
+  mutable bool carry_qlobalq;
+#endif
 
 private:
 

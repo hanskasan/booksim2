@@ -4,3 +4,17 @@ y.tab.c
 y.tab.h
 *.o
 *.d
+*.lo
+.dirstamp
+src/.deps
+src/.dirstamp
+allocators/.deps
+allocators/.dirstamp
+arbiters/.deps
+arbiters/.dirstamp
+networks/.deps
+networks/.dirstamp
+power/.deps
+power/.dirstamp
+routers/.deps
+routers/.dirstamp

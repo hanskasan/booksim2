@@ -31,14 +31,14 @@
  *
  */
 
-#include "booksim.hpp"
+#include "../booksim.hpp"
 #include <vector>
 #include <sstream>
 #include <ctime>
 #include <cassert>
 #include "kncube.hpp"
-#include "random_utils.hpp"
-#include "misc_utils.hpp"
+#include "../random_utils.hpp"
+#include "../misc_utils.hpp"
  //#include "iq_router.hpp"
 
 

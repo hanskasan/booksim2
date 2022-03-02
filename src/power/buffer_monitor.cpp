@@ -27,7 +27,7 @@
 
 #include "buffer_monitor.hpp"
 
-#include "flit.hpp"
+#include "../flit.hpp"
 
 BufferMonitor::BufferMonitor( int inputs, int classes ) 
 : _cycles(0), _inputs(inputs), _classes(classes) {

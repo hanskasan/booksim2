@@ -74,12 +74,50 @@ void Flit::Reset()
   watch     = false ;
   record    = false ;
   intm = 0;
+#ifndef BOOKSIM_STANDALONE
+  sst_src = -1;
+#endif
   src = -1;
   dest = -1;
   pri = 0;
   intm =-1;
   ph = -1;
   data = 0;
+
+  // HANS: Additional entries
+  min = -1;
+  force_min = false;
+
+#ifdef DGB_ON
+  dgb_train = false;
+
+  h_min = -1;
+  h_non = -1;
+  q_min = -1;
+  q_non = -1;
+  q_min_global = -1;
+  q_non_global = -1;
+
+  q_count_at_2ndrouter = 0;
+  q_total_srcgrp = 0;
+
+  min_port = -1;
+  non_port = -1;
+  min_global_port = -1;
+  non_global_port = -1;
+
+  contention            = -1;
+  until_2ndrouter       = -1;
+  q_count_at_2ndrouter  = 0;
+  lat_start             = -1;
+  wire_s                = -1;
+  wire_total            = 0;
+
+  carry_learnset_intm = false;
+  carry_learnset_dest = false;
+
+  //tail_flit = nullptr;
+#endif
 }  
 
 Flit * Flit::New() {
