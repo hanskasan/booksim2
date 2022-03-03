@@ -277,6 +277,9 @@ void fattree_nca( const Router *r, const Flit *f,
 
   int out_port;
 
+  // All minimal routing
+  f->min = 1;
+
   if(inject) {
 
     out_port = -1;

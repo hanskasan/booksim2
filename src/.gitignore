@@ -18,3 +18,4 @@ power/.deps
 power/.dirstamp
 routers/.deps
 routers/.dirstamp
+usernet/*

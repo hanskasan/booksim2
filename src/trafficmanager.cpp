@@ -1915,7 +1915,7 @@ bool TrafficManager::_SingleSim( )
             _Step( );
 
             // HANS: Show additional statistics
-            DisplayAvgLatFrequently(cout, 200);
+            // DisplayAvgLatFrequently(cout, 200);
         }
     
         //cout << _sim_state << endl;
