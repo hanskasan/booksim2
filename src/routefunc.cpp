@@ -1583,6 +1583,82 @@ void dim_order_torus( const Router *r, const Flit *f, int in_channel,
   outputs->AddRange( out_port, vcBegin, vcEnd );
 }
 
+#ifdef REPLAY_BUFFER
+void dim_order_hans_torus( const Router *r, const Flit *f, int in_channel, 
+		      OutputSet *outputs, bool inject )
+{
+  int vcBegin = 0, vcEnd = gNumVCs-1;
+  if ( f->type == Flit::READ_REQUEST ) {
+    vcBegin = gReadReqBeginVC;
+    vcEnd = gReadReqEndVC;
+  } else if ( f->type == Flit::WRITE_REQUEST ) {
+    vcBegin = gWriteReqBeginVC;
+    vcEnd = gWriteReqEndVC;
+  } else if ( f->type ==  Flit::READ_REPLY ) {
+    vcBegin = gReadReplyBeginVC;
+    vcEnd = gReadReplyEndVC;
+  } else if ( f->type ==  Flit::WRITE_REPLY ) {
+    vcBegin = gWriteReplyBeginVC;
+    vcEnd = gWriteReplyEndVC;
+  }
+  assert(((f->vc >= vcBegin) && (f->vc <= vcEnd)) || (inject && (f->vc < 0)));
+
+  int out_port;
+
+  // Always MIN routing
+  f->min = 1;
+
+  if(inject) {
+
+    out_port = -1;
+
+  } else {
+    
+    int cur  = r->GetID( );
+    int dest = f->dest;
+
+    dor_next_torus( cur, dest, in_channel,
+		    &out_port, &f->ph, false );
+
+
+    // at the destination router, we don't need to separate VCs by ring partition
+    if(cur != dest) {
+
+      int const available_vcs = (vcEnd - vcBegin + 1) / 2;
+      assert(available_vcs > 0);
+
+      if ( f->ph == 0 ) {
+	      vcEnd -= available_vcs;
+      } else {
+	      vcBegin += available_vcs;
+      } 
+    }
+
+    if ( f->watch ) {
+      *gWatchOut << GetSimTime() << " | " << r->FullName() << " | "
+		 << "Adding VC range [" 
+		 << vcBegin << "," 
+		 << vcEnd << "]"
+		 << " at output port " << out_port
+		 << " for flit " << f->id
+		 << " (input port " << in_channel
+		 << ", destination " << f->dest << ")"
+		 << "." << endl;
+    }
+
+  }
+ 
+  outputs->Clear( );
+
+  // Override VC selection
+  int vcSel = f->cl;
+
+  // outputs->AddRange( out_port, vcBegin, vcEnd );
+  outputs->AddRange( out_port, vcSel, vcSel );
+
+}
+#endif
+
 //=============================================================
 
 void dim_order_ni_torus( const Router *r, const Flit *f, int in_channel, 
@@ -1977,6 +2053,7 @@ void InitializeRoutingMap( const Configuration & config )
   gRoutingFunctionMap["dim_order_ni_mesh"]  = &dim_order_ni_mesh;
   gRoutingFunctionMap["dim_order_pni_mesh"]  = &dim_order_pni_mesh;
   gRoutingFunctionMap["dim_order_torus"] = &dim_order_torus;
+  gRoutingFunctionMap["dim_order_hans_torus"] = &dim_order_hans_torus;
   gRoutingFunctionMap["dim_order_ni_torus"] = &dim_order_ni_torus;
   gRoutingFunctionMap["dim_order_bal_torus"] = &dim_order_bal_torus;
 

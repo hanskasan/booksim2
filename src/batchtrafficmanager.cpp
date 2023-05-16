@@ -157,8 +157,12 @@ bool BatchTrafficManager::_SingleSim( )
     for(int c = 0; c < _classes; ++c) {
       packets_left |= !_total_in_flight_flits[c].empty();
     }
-    
-    while( packets_left ) { 
+
+#ifdef REPLAY_BUFFER    
+    while ( packets_left || !_IsAllReplayBufferEmpty() ) {
+#else
+    while( packets_left ) {
+#endif
       _Step( ); 
       
       ++empty_steps;
@@ -229,8 +233,8 @@ void BatchTrafficManager::DisplayOverallStats(ostream & os) const {
   TrafficManager::DisplayOverallStats(os);
   os << "Overall min batch duration = " << _overall_min_batch_time / (double)_total_sims
      << " (" << _total_sims << " samples)" << endl
-     << "Overall min batch duration = " << _overall_avg_batch_time / (double)_total_sims
+     << "Overall avg batch duration = " << _overall_avg_batch_time / (double)_total_sims
      << " (" << _total_sims << " samples)" << endl
-     << "Overall min batch duration = " << _overall_max_batch_time / (double)_total_sims
+     << "Overall max batch duration = " << _overall_max_batch_time / (double)_total_sims
      << " (" << _total_sims << " samples)" << endl;
 }

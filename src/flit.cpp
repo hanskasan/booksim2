@@ -118,6 +118,13 @@ void Flit::Reset()
 
   //tail_flit = nullptr;
 #endif
+
+#ifdef REPLAY_BUFFER
+  seq = -1;
+  size = -1;
+  is_explicit = false;
+  is_replay = false;
+#endif
 }  
 
 Flit * Flit::New() {

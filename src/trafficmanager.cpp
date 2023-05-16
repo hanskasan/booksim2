@@ -285,6 +285,14 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
 #endif
     }
 
+#ifdef REPLAY_BUFFER
+    _error_rate = config.GetFloat("error_rate");
+    _error_rate_power = config.GetInt("error_rate_power");
+
+    _ack_timeout = config.GetInt("ack_timeout");
+    _piggyback_max_wait = config.GetInt("piggyback_max_wait");
+#endif
+
     // ============ Injection VC states  ============ 
 
     _buf_states.resize(_nodes);
@@ -692,10 +700,31 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     _sst_credits.resize(_nodes, 0);
 #endif
 
+#ifdef REPLAY_BUFFER
+    _ack_queues.resize(_nodes, vector<queue<Ack*> >(_nodes));
+    _replay_buffer.resize(_nodes, vector<list<replay_info> >(_nodes));
+
+    _is_waiting_for_replay.resize(_nodes, vector<bool>(_nodes, false));
+    _last_ack_send_time.resize(_nodes, vector<int>(_nodes, 0));
+
+    _send_sequence.resize(_nodes, vector<int>(_nodes, 0));
+    _recv_sequence.resize(_nodes, vector<int>(_nodes, 0));
+    _last_ack_recv_time.resize(_nodes, vector<int>(_nodes, -1));
+#endif
+
 }
 
 TrafficManager::~TrafficManager( )
 {
+#ifdef REPLAY_BUFFER
+    // HANS: Ensure that all replay buffers are empty
+    for (int i = 0; i < _nodes; i++){
+        for (int j = 0; j < _nodes; j++){
+            // cout << GetSimTime() << " - Replay buffer size at " << i << " to " << j << " is " << _replay_buffer[i][j].size() << endl;
+            assert(_replay_buffer[i][j].empty());
+        }
+    }
+#endif
 
     for ( int source = 0; source < _nodes; ++source ) {
         for ( int subnet = 0; subnet < _subnets; ++subnet ) {
@@ -846,7 +875,11 @@ void TrafficManager::_RetireFlit( Flit *f, int subnet, int dest )
         // if (head->dest == 32)
             //cout << GetSimTime() << " - Retired by BookSim, pid: " << f->pid << " | src: " << head->src << " | dest: " << head->dest << " | min: " << head->min << " | plat: " << f->atime - head->ctime << endl;
 
+#ifdef REPLAY_BUFFER
+        if ((f->cl == 0) && (!f->is_replay)){ // Only record motif traffic (no replays and explicits)
+#else
         if (f->cl == 0){ // Only record motif traffic
+#endif
             retired_info bundle;
             bundle.eject_time = GetSimTime();
             bundle.subnet = subnet;
@@ -1005,6 +1038,17 @@ void TrafficManager::_GeneratePacket( int source, int stype,
 #else
     int packet_destination = _traffic_pattern[cl]->dest(source);
 #endif
+#ifdef REPLAY_BUFFER
+    // HANS: Override traffic
+    // if (cl == 0){
+    //     packet_destination = (source + 1) % gNodes; // Clockwise
+    // } else {
+    //     assert(cl == 1);
+    //     packet_destination = source - 1; // Counter-clockwise
+    //     if (packet_destination < 0)
+    //         packet_destination += gNodes;
+    // }
+#endif
     bool record = false;
     bool watch = gWatchOut && (_packets_to_watch.count(pid) > 0);
     if(_use_read_write[cl]){
@@ -1082,6 +1126,10 @@ void TrafficManager::_GeneratePacket( int source, int stype,
 #ifdef DGB_ON
         Flit * head_f;
 #endif
+#ifdef REPLAY_BUFFER
+        // HANS: Assign sequence
+        f->seq = _send_sequence[source][packet_destination];
+#endif
 
         _total_in_flight_flits[f->cl].insert(make_pair(f->id, f));
         if(record) {
@@ -1102,6 +1150,9 @@ void TrafficManager::_GeneratePacket( int source, int stype,
             // To keep the head flit pointer
 #ifdef DGB_ON
             head_f = f;
+#endif
+#ifdef REPLAY_BUFFER
+            f->size = size;
 #endif
 
         } else {
@@ -1132,6 +1183,10 @@ void TrafficManager::_GeneratePacket( int source, int stype,
 #ifdef DGB_ON
             head_f->tail_flit = f;
 #endif
+#ifdef REPLAY_BUFFER
+            f->dest = packet_destination;
+            f->size = size;
+#endif
             
         } else {
             f->tail = false;
@@ -1152,7 +1207,34 @@ void TrafficManager::_GeneratePacket( int source, int stype,
         // cout << "Generate background: " << f->id << " from src: " << f->src << " to dest: " << f->dest << endl;
 
         _partial_packets[source][cl].push_back( f );
+
+#ifdef REPLAY_BUFFER
+        // HANS: Add ORIGINAL packet to the replay buffer
+        if (f->head){
+            assert(!(f->is_explicit || f->is_replay));
+            assert(size > 0);
+            
+            // If replay buffer is previously empty, update _last_ack_recv timestamp
+            if (_replay_buffer[source][packet_destination].empty())
+                _last_ack_recv_time[source][packet_destination] = GetSimTime();
+
+            replay_info bundle;
+            bundle.ctime = f->ctime;
+            bundle.pid = f->pid;
+            bundle.seq = _send_sequence[source][packet_destination];
+            bundle.size = size;
+            _replay_buffer[source][packet_destination].push_back( bundle );
+
+            // if ((source == _debug_src) && (packet_destination == _debug_dest))
+                // cout << GetSimTime() << " - Insert to replay buffer at " << source << " to " << packet_destination << ", the size now is " << _replay_buffer[source][packet_destination].size() << endl;
+        }
+#endif
     }
+
+#ifdef REPLAY_BUFFER
+    // HANS: Increment sequence
+    _send_sequence[source][packet_destination] += 1;
+#endif
 }
 
 #ifndef BOOKSIM_STANDALONE
@@ -1209,6 +1291,12 @@ int TrafficManager::_GeneratePacketfromMotif( int sst_source, int source, int de
         Flit * head_f;
 #endif
 
+#ifdef REPLAY_BUFFER
+        f->seq = _send_sequence[source][packet_destination];
+        f->is_replay = false;
+        f->is_explicit = false;
+#endif
+
         _total_in_flight_flits[f->cl].insert(make_pair(f->id, f));
         if(record) {
             _measured_in_flight_flits[f->cl].insert(make_pair(f->id, f));
@@ -1223,6 +1311,9 @@ int TrafficManager::_GeneratePacketfromMotif( int sst_source, int source, int de
             f->head = true;
             //packets are only generated to nodes smaller or equal to limit
             f->dest = packet_destination;
+#ifdef REPLAY_BUFFER
+            f->size = size;
+#endif
 
 #ifdef DGB_ON
             // HANS: Enabling DGB with large packets
@@ -1259,6 +1350,11 @@ int TrafficManager::_GeneratePacketfromMotif( int sst_source, int source, int de
             head_f->tail_flit = f;
 #endif
 
+#ifdef REPLAY_BUFFER
+            f->dest = packet_destination;
+            f->size = size;
+#endif
+
         } else {
             f->tail = false;
         }
@@ -1276,12 +1372,39 @@ int TrafficManager::_GeneratePacketfromMotif( int sst_source, int source, int de
 
         _partial_packets[source][cl].push_back( f );
 
+#ifdef REPLAY_BUFFER
+        // HANS: Add ORIGINAL packet to the replay buffer
+        if (f->head){
+            assert(!(f->is_explicit || f->is_replay));
+            assert(size > 0);
+            
+            // If replay buffer is previously empty, update _last_ack_recv timestamp
+            if (_replay_buffer[source][packet_destination].empty())
+                _last_ack_recv_time[source][packet_destination] = GetSimTime();
+
+            replay_info bundle;
+            bundle.ctime = f->ctime;
+            bundle.pid = f->pid;
+            bundle.seq = _send_sequence[source][packet_destination];
+            bundle.size = size;
+            _replay_buffer[source][packet_destination].push_back( bundle );
+
+            // if ((source == _debug_src) && (packet_destination == _debug_dest))
+                // cout << GetSimTime() << " - Insert to replay buffer at " << source << " to " << packet_destination << ", the size now is " << _replay_buffer[source][packet_destination].size() << endl;
+        }
+#endif
+
         // HANS: For debugging
         // if (source == 0)
             // cout << GetSimTime() << " - Injection queue size: " << _partial_packets[source][cl].size() << endl;
     }
 
     // printf("GeneratePacketFromMotif with PID: %d\n", pid);
+
+#ifdef REPLAY_BUFFER
+    // HANS: Increment sequence
+    _send_sequence[source][packet_destination] += 1;
+#endif
 
     return pid;
 }
@@ -1291,7 +1414,8 @@ int TrafficManager::_GeneratePacketfromMotif( int sst_source, int source, int de
 void TrafficManager::_Inject(){
 
     for ( int input = 0; input < _nodes; ++input ) {  
-        for ( int c = 0; c < _classes; ++c ) {
+        // for ( int c = 0; c < _classes; ++c ) {
+        int c = 0;
             // Potentially generate packets for any (input,class)
             // that is currently empty
             if ( _partial_packets[input][c].empty() ) {
@@ -1316,7 +1440,7 @@ void TrafficManager::_Inject(){
                     _qdrained[input][c] = true;
                 }
             }
-        }
+        // }
     }
 }
 #endif
@@ -1619,13 +1743,31 @@ void TrafficManager::_Step( )
                 // if (n == 0)
                 //     cout << "TrafficManager inject fID: " << f->id << " at: " << GetSimTime() << endl;
 
+#ifdef REPLAY_BUFFER
+                if ((f->cl == 0) && (!f->is_replay))
+#else
                 if (f->cl == 0) // Only consider message flits
+#endif
                     _sst_credits[n]++;
 #endif
 
 #ifdef TRACK_FLOWS
                 ++_outstanding_credits[c][subnet][n];
                 _outstanding_classes[n][subnet][f->vc].push(c);
+#endif
+
+#ifdef REPLAY_BUFFER
+                // HANS: Piggyback ACKs
+                if (f->head){
+                    while (!_ack_queues[f->src][f->dest].empty()){
+                        Ack* ack = _ack_queues[f->src][f->dest].front();
+                        if ((ack->src == _debug_dest) && (ack->dest == _debug_src))
+                            cout << GetSimTime() << " - Piggyback acks with seq " << ack->seq << " on " << f->pid << " from " << ack->src << " to " << ack->dest << " is_replay " << f->is_replay << " is_explicit " << f->is_explicit << endl;
+                        f->ack.push(ack);
+                        _ack_queues[f->src][f->dest].pop();
+                        _last_ack_send_time[f->src][f->dest] = GetSimTime();
+                    }
+                }
 #endif
 
                 dest_buf->SendingFlit(f);
@@ -1693,6 +1835,73 @@ void TrafficManager::_Step( )
                 ++_ejected_flits[f->cl][n];
 #endif
 
+#ifdef REPLAY_BUFFER
+                // Receive acknowledgement
+                if (f->head){
+                    while (!f->ack.empty()){
+                        Ack* temp = f->ack.front();
+                        assert(temp->dest == n);
+                        
+                        // Update timestamp
+                        _last_ack_recv_time[temp->dest][temp->src] = GetSimTime();
+
+                        // Pop replay buffer
+                        if (_replay_buffer[temp->dest][temp->src].size() == 0)
+                            cout << GetSimTime() << " - Replay buffer from " << temp->dest << " to " << temp->src << " is empty, reported by pID " << f->pid << endl;
+                        assert(_replay_buffer[temp->dest][temp->src].size() > 0);
+
+                        if (temp->seq != _replay_buffer[temp->dest][temp->src].front().seq)
+                            cout << "ACK ERROR at " << temp->dest << " from " << temp->src << " with seq " << temp->seq << " expects " << _replay_buffer[temp->dest][temp->src].front().seq << ", pID: " << f->pid << endl;
+                        assert(temp->seq == _replay_buffer[temp->dest][temp->src].front().seq);
+                        _replay_buffer[temp->dest][temp->src].pop_front();
+
+                        if ((temp->dest == _debug_src) && (temp->src == _debug_dest))
+                            cout << GetSimTime() << " - Receive ACK at " << temp->dest << " from " << temp->src << " seq " << temp->seq << " pid " << f->pid << endl;
+
+                        f->ack.pop();
+
+                        delete temp;
+                    }
+
+                    // if ((f->src == _debug_dest) && (n == _debug_src))
+                        // cout << GetSimTime() << " - Receive ACK, replay buffer size at " << f->dest << " to " << f->src << " is " << _replay_buffer[f->dest][f->src].size() << endl;
+                }
+
+                // Issue acknowledgement
+                // if ((f->tail) && (!f->is_explicit)){ // HANS: It is more accurate to issue ACK after receiving tail, but since we have to prevent the whole erroneous packet to be recorded, there is no choice but to check this at ACK..
+                if ((f->head) && (!f->is_explicit)){
+                    if (_is_waiting_for_replay[n][f->src]){
+                        if ((f->is_replay) && (f->seq == _recv_sequence[n][f->src])){
+                            // if ((f->src == _debug_src) && (n == _debug_dest))
+                                // cout << GetSimTime() << " - Node " << n << " RECEIVED replays" << endl;
+                            _is_waiting_for_replay[n][f->src] = false;
+                        }
+                    }
+
+                    if (!_is_waiting_for_replay[n][f->src]){ // Don't change this to 'else'
+                        // float adjusted_error_rate = _error_rate * 128 * 18; //18-flit packets, each flit has 128-bit.
+                        float adjusted_error_rate = pow(10, _error_rate_power) * 128 * 18; //18-flit packets, each flit has 128-bit.
+                        if (RandomFloat() < adjusted_error_rate){
+                            if ((f->src == _debug_src) && (n == _debug_dest))
+                                cout << GetSimTime() << " - Node " << n << " ASKS for replay from " << f->src << " at sequence " << _recv_sequence[n][f->src] << endl;
+                            _is_waiting_for_replay[n][f->src] = true;
+                        } else {
+                            if (f->seq != _recv_sequence[n][f->src]) // Very likely caused by unintended/false replays (replay is initiated even though no NACK is sent). Consider increasing the ack_timeout value.
+                                cout << GetSimTime() << " - DATA ERROR from " << f->src << " at " << n << " pid " << f->pid << " seq " << f->seq << " expecting " << _recv_sequence[n][f->src] << endl;
+
+                            assert(f->seq == _recv_sequence[n][f->src]);
+                            if ((f->src == _debug_src) && (n == _debug_dest))
+                                cout << GetSimTime() << " - Node " << n << " ISSUES ACK for " << f->src << " with sequence " << _recv_sequence[n][f->src] << ", my seq is " << f->seq << ", my pid is " << f->pid << ", ctime " << f->ctime << ", itime " << f->itime << ", is_replay " << f->is_replay << endl;
+                            _IssueAck(f->pid, f->src, f->dest, _recv_sequence[n][f->src]);
+                            _recv_sequence[n][f->src] += 1;
+                        }
+                    }
+                }
+
+                if (_is_waiting_for_replay[n][f->src])
+                    f->record = false;
+#endif
+
 #ifdef BOOKSIM_STANDALONE
                 _RetireFlit(f, n);
 #else
@@ -1719,6 +1928,11 @@ void TrafficManager::_Step( )
     if(gTrace){
         cout<<"TIME "<<_time<<endl;
     }
+
+#ifdef REPLAY_BUFFER
+    _Replay();
+    _SendExplicits();
+#endif
 
 }
   
@@ -2870,5 +3084,220 @@ void TrafficManager::InjectEndpointCredit(int node, int subnet, int vc)
     c->vc.insert(vc);
 
     _endpoint_credits[subnet][node].push(c);
+}
+#endif
+
+#ifdef REPLAY_BUFFER
+void TrafficManager::_Replay()
+{
+    for (int i = 0; i < _nodes; i++){
+        for (int j = 0; j < _nodes; j++){
+            if (!_replay_buffer[i][j].empty()){
+                // int gen_time = _replay_buffer[i][j].front().gen_time;
+
+                // Copy the replay buffer content to injection queue
+                // if ((GetSimTime() - gen_time) > _ack_timeout){
+                if ((GetSimTime() - _last_ack_recv_time[i][j]) > _ack_timeout){
+                    if ((i == _debug_src) && (j == _debug_dest))
+                        cout << GetSimTime() << " - REPLAY from " << i << " to " << j << ", replay buffer size is now " << _replay_buffer[i][j].size() << ", front PID: " << _replay_buffer[i][j].front().pid << ", front seq: " << _replay_buffer[i][j].front().seq << ", back seq: " << _replay_buffer[i][j].back().seq << ", front gentime " << _replay_buffer[i][j].front().ctime << ", last_recv_ack at " << _last_ack_recv_time[i][j] << endl;
+
+                    _last_ack_recv_time[i][j] = GetSimTime(); // Prevent multiple replays
+
+                    list<replay_info> temp_list = _replay_buffer[i][j];
+                    _replay_buffer[i][j].clear();
+
+                    while (!temp_list.empty()){
+                        replay_info bundle = temp_list.front();
+                        // bundle.ctime = GetSimTime();
+                        _GenerateAdditionalPacket(i, j, bundle.ctime, bundle.seq, bundle.size, 0, 1);
+                        temp_list.pop_front();
+                        _replay_buffer[i][j].push_back(bundle);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void TrafficManager::_SendExplicits()
+{
+    for (int i = 0; i < _nodes; i++){
+        for (int j = 0; j < _nodes; j++){
+            if ((!_ack_queues[i][j].empty()) && ((GetSimTime() - _last_ack_send_time[i][j]) > _piggyback_max_wait)){
+                _GenerateAdditionalPacket(i, j, GetSimTime(), -1, 1, 1, 0);
+            }
+        }
+    }
+}
+
+void TrafficManager::_IssueAck(int pid, int data_src, int data_dest, int seq)
+{
+    int ack_src = data_dest;
+    int ack_dest = data_src;
+
+    Ack* ack = new Ack();
+
+    ack->pid = pid;
+    ack->src = ack_src;
+    ack->dest = ack_dest;
+    ack->seq = seq;
+
+    // Push to queue, then waits there to be piggybacked to their respective destination
+    _ack_queues[data_dest][data_src].push(ack);
+}
+
+void TrafficManager::_GenerateAdditionalPacket( int source, int dest, int time, int seq, int size, bool is_explicit, bool is_replay )
+{
+    Flit::FlitType packet_type = Flit::ANY_TYPE;
+    int pid = _cur_pid++;
+    // int cl = (dest == ((source + 1) % gNodes)) ? 0 : 1;
+    int cl = (is_replay) ? 0 : 1;
+    assert(_cur_pid);
+    int packet_destination = dest;
+    // bool record = (is_replay) ? true : false;
+    bool record = true;
+    bool watch = gWatchOut && (_packets_to_watch.count(pid) > 0);
+
+    if ((packet_destination <0) || (packet_destination >= _nodes)) {
+        ostringstream err;
+        err << "Incorrect packet destination " << packet_destination
+            << " for stype " << packet_type;
+        Error( err.str( ) );
+    }
+
+    int subnetwork = ((packet_type == Flit::ANY_TYPE) ? 
+                      RandomInt(_subnets-1) :
+                      _subnet[packet_type]);
+  
+    if ( watch ) { 
+        *gWatchOut << GetSimTime() << " | "
+                   << "node" << source << " | "
+                   << "Enqueuing packet " << pid
+                   << " at time " << GetSimTime()
+                   << "." << endl;
+    }
+
+    // deque<Flit*> temp;
+  
+    for ( int i = 0; i < size; ++i ) {
+        Flit * f  = Flit::New();
+        f->id     = _cur_id++;
+        assert(_cur_id);
+        f->pid    = pid;
+        f->watch  = watch | (gWatchOut && (_flits_to_watch.count(f->id) > 0));
+        f->subnetwork = subnetwork;
+        f->src    = source;
+        f->ctime  = time;
+        f->record = record;
+        f->cl     = cl;
+        f->is_explicit  = is_explicit;
+        f->is_replay    = is_replay;
+
+        _total_in_flight_flits[f->cl].insert(make_pair(f->id, f));
+
+        if(record) {
+            _measured_in_flight_flits[f->cl].insert(make_pair(f->id, f));
+        }
+    
+        if(gTrace){
+            cout<<"New Explicit Flit "<<f->src<<endl;
+        }
+        f->type = packet_type;
+
+        if ( i == 0 ) { // Head flit
+            f->head = true;
+            //packets are only generated to nodes smaller or equal to limit
+            f->dest = packet_destination;
+            f->size = size;
+
+            // if ((f->src == _debug_dest) && (packet_destination == _debug_src))
+                // cout << GetSimTime() << " - Explicit with ID: " << f->pid << " carries " << _ack_queues[f->src][f->dest].size() << " acks." << endl;
+
+            /*
+            while (!_ack_queues[f->src][f->dest].empty()){
+                Ack* ack = _ack_queues[f->src][f->dest].front();
+                if ((ack->src == _debug_dest) && (ack->dest == _debug_src))
+                    cout << GetSimTime() << " - Piggyback acks with seq " << ack->seq << " on " << f->pid << " from " << ack->src << " to " << ack->dest << " class " << f->cl << " is_replay " << f->is_replay << " is_explicit " << f->is_explicit << endl;
+                f->ack.push(ack);
+                _ack_queues[f->src][f->dest].pop();
+                _last_ack_send_time[f->src][f->dest] = GetSimTime();
+            }
+            */
+        } else {
+            f->head = false;
+            f->dest = -1;
+        }
+        switch( _pri_type ) {
+        case class_based:
+            f->pri = _class_priority[cl];
+            assert(f->pri >= 0);
+            break;
+        case age_based:
+            f->pri = numeric_limits<int>::max() - GetSimTime();
+            assert(f->pri >= 0);
+            break;
+        case sequence_based:
+            f->pri = numeric_limits<int>::max() - _packet_seq_no[source];
+            assert(f->pri >= 0);
+            break;
+        default:
+            f->pri = 0;
+        }
+        if ( i == ( size - 1 ) ) { // Tail flit
+            f->tail = true;
+            f->dest = packet_destination;
+            f->size = size;
+        } else {
+            f->tail = false;
+        }
+    
+        f->vc  = -1;
+
+        // if (f->pid == _debug_pid)
+        //     f->watch = true;
+
+        if ( f->watch ) { 
+            *gWatchOut << GetSimTime() << " | "
+                       << "node" << source << " | "
+                       << "Enqueuing flit " << f->id
+                       << " (packet " << f->pid
+                       << ") at time " << GetSimTime()
+                       << ", injection queue size is " << _partial_packets[source][cl].size() << ", front " << _partial_packets[source][cl].front()->pid
+                       << "." << endl;
+        }
+
+        if (is_explicit){
+            assert(!is_replay);
+            // _partial_packets[source][cl].push_front( f );
+        } else if (is_replay){
+            assert(!is_explicit);
+            f->seq = seq;
+            // temp.push_back(f);
+
+            // if ((f->src == _debug_src) && (f->dest == _debug_dest))
+                // cout << GetSimTime() << " - Generate replay packet from " << f->src << " to " << f->dest << " with sequence " << seq << endl;
+
+            // _partial_packets[source][cl].push_back( f );
+        } else {
+            assert(0);
+        }
+
+        _partial_packets[source][cl].push_back( f );
+    }
+
+    /*
+    if (is_replay){
+        while(!temp.empty()){
+            Flit* temp_flit = temp.front();
+
+            // temp_flit->watch=true;
+
+            _partial_packets[source][cl].push_front( temp_flit );
+            temp.pop_front();
+
+            // cout << GetSimTime() << " - Replay flit " << temp_flit->id << " at source " << source << endl; 
+        }
+    }
+    */
 }
 #endif

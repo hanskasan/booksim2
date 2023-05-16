@@ -65,6 +65,15 @@ struct retired_info {
 };
 #endif
 
+#ifdef REPLAY_BUFFER
+struct replay_info {
+  int ctime;
+  int pid;
+  int seq;
+  int size;
+};
+#endif
+
 //register the requests to a node
 class PacketReplyInfo;
 
@@ -122,6 +131,13 @@ protected:
 #else
   vector<TrafficPattern *> _traffic_pattern;
   vector<InjectionProcess *> _injection_process;
+#endif
+
+#ifdef REPLAY_BUFFER
+float _error_rate;
+int _error_rate_power;
+int _ack_timeout;
+int _piggyback_max_wait;
 #endif
 
   // ============ Message priorities ============ 
@@ -347,6 +363,23 @@ protected:
   int _max_plat = 0;
 #endif
 
+#ifdef REPLAY_BUFFER
+  vector<vector<queue<Ack*> > > _ack_queues;
+  vector<vector<list<replay_info> > > _replay_buffer;
+  
+  vector<vector<bool > > _is_waiting_for_replay;
+  vector<vector<int  > > _last_ack_send_time;
+  vector<vector<int  > > _last_ack_recv_time;
+
+  vector<vector<int  > > _send_sequence;
+  vector<vector<int  > > _recv_sequence;
+
+  int _debug_src = 0;
+  int _debug_dest = 1;
+
+  int _debug_pid = -1;
+#endif
+
   // ============ Internal methods ============ 
 protected:
 
@@ -395,6 +428,14 @@ protected:
 
   int _GetNextPacketSize(int cl) const;
   double _GetAveragePacketSize(int cl) const;
+
+#ifdef REPLAY_BUFFER
+  void _Replay();
+  void _SendExplicits();
+
+  void _IssueAck( int pid, int data_src, int data_dest, int seq );
+  void _GenerateAdditionalPacket( int source, int dest, int time, int seq, int size, bool is_explicit, bool is_replay );
+#endif
 
 public:
 
@@ -486,6 +527,20 @@ public:
     
   }
 
+#endif
+
+#ifdef REPLAY_BUFFER
+  bool _IsAllReplayBufferEmpty(){
+    for (int i = 0; i < _nodes; i++){
+      for (int j = 0; j < _nodes; j++){
+        if (!_replay_buffer[i][j].empty()){
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
 #endif
 
 };

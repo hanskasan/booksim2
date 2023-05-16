@@ -10,3 +10,6 @@
 Makefile
 Makefile.in
 Makefile.am
+*.report
+batch_*
+show_*

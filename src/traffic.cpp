@@ -347,11 +347,21 @@ int NeighborTrafficPattern::dest(int source)
   int offset = 1;
   int result = 0;
   
-  for(int n = 0; n < _n; ++n) {
-    result += offset *
-      (((source / offset) % (_xr * _k) + 1) % (_xr * _k));
-    offset *= (_xr * _k);
+  // for(int n = 0; n < _n; ++n) {
+  //   result += offset *
+  //     (((source / offset) % (_xr * _k) + 1) % (_xr * _k));
+  //   offset *= (_xr * _k);
+  // }
+
+  // if (RandomFloat() < 0.5){ // Bidirectional
+  if (1){ // Unidirectional
+    result = (source + offset) % _nodes;
+  } else {
+    result = source - offset;
+    if (result < 0)
+      result += _nodes;
   }
+
   return result;
 }
 

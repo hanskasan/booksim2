@@ -320,6 +320,15 @@ BookSimConfig::BookSimConfig( )
 
   //==================Network file===========================
   AddStrField("network_file","");
+
+  // HANS: Additionals
+#ifdef REPLAY_BUFFER
+  _float_map["error_rate"] = 0.1;
+  
+  _int_map["error_rate_power"] = -1;
+  _int_map["piggyback_max_wait"] = 100;
+  _int_map["ack_timeout"] = 200;
+#endif
 }
 
 

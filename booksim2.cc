@@ -180,6 +180,20 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
       printf("Using %s background traffic with %.3f\n", bg_traffic.c_str(), bg_rate);
     }
 
+#ifdef REPLAY_BUFFER
+    config.Assign("classes", 2);
+    
+    int error_rate_power = params.find<int>("error_rate_power", -1, found);
+    config.Assign("error_rate_power", error_rate_power);
+    printf("Error rate power is %d\n", error_rate_power);
+
+    int piggyback_max_wait = params.find<int>("piggyback_max_wait", -1, found);
+    config.Assign("piggyback_max_wait", piggyback_max_wait);
+
+    int ack_timeout = params.find<int>("ack_timeout", -1, found);
+    config.Assign("ack_timeout", ack_timeout);
+#endif
+
     // END: Override configuration with SST parameters
 
     // Initialize based on our configuration
@@ -592,8 +606,12 @@ bool booksim2::BabyStep(Cycle_t cycle)
     }
 
     // Check if there is any outstanding packet in BookSim or events to be injected to the NIC
+#ifdef REPLAY_BUFFER
+    if ((!is_empty) || (!trafficManager->_IsAllReplayBufferEmpty())){
+#else
     // if ((!is_empty) || (trafficManager->_CreditsOutstanding() > 0)){
-    if (!is_empty){
+    // if (!is_empty){
+#endif
       // Return false to indicate the clock handler should not be disabled
       _is_request_alarm = false;
 

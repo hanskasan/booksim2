@@ -45,6 +45,15 @@ struct learnset{
 };
 #endif
 
+#ifdef REPLAY_BUFFER
+struct Ack{
+  int pid; // Record the packet ID
+  int seq; // Sequence
+  int src; // Who send this ACK
+  int dest; // Who should receive this ACK == who sent the data
+};
+#endif
+
 class Flit {
 
 public:
@@ -152,6 +161,14 @@ public:
   mutable queue<pair<int, int> > globalq;
   mutable queue<pair<int, int> > globalq_net;
   mutable bool carry_qlobalq;
+#endif
+
+#ifdef REPLAY_BUFFER
+  mutable int  seq;
+  mutable int  size;
+  mutable bool is_explicit;
+  mutable bool is_replay;
+  mutable queue<Ack*> ack;
 #endif
 
 private:

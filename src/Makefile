@@ -26,7 +26,7 @@
 
 LEX = flex
 YACC   = bison -y
-DEFINE = -D SINGLE_CYCLE -D BOOKSIM_STANDALONE 
+DEFINE = -D SINGLE_CYCLE -D BOOKSIM_STANDALONE -D REPLAY_BUFFER 
 INCPATH = -I. -Iarbiters -Iallocators -Irouters -Inetworks -Ipower
 CPPFLAGS += -Wall $(INCPATH) $(DEFINE)
 CPPFLAGS += -O3
