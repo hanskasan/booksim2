@@ -85,6 +85,9 @@ public:
 
   int  id;
   int  pid;
+#ifdef REPLAY_BUFFER
+  int  ori_pid; // Original PID
+#endif
 
   bool record;
 

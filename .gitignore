@@ -11,5 +11,6 @@ Makefile
 Makefile.in
 Makefile.am
 *.report
+report_*
 batch_*
 show_*

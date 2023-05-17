@@ -291,6 +291,10 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
 
     _ack_timeout = config.GetInt("ack_timeout");
     _piggyback_max_wait = config.GetInt("piggyback_max_wait");
+
+#ifndef BOOKSIM_STANDALONE
+    _flit_size = config.GetInt("flit_size");
+#endif
 #endif
 
     // ============ Injection VC states  ============ 
@@ -876,7 +880,7 @@ void TrafficManager::_RetireFlit( Flit *f, int subnet, int dest )
             //cout << GetSimTime() << " - Retired by BookSim, pid: " << f->pid << " | src: " << head->src << " | dest: " << head->dest << " | min: " << head->min << " | plat: " << f->atime - head->ctime << endl;
 
 #ifdef REPLAY_BUFFER
-        if ((f->cl == 0) && (!f->is_replay)){ // Only record motif traffic (no replays and explicits)
+        if ((f->cl == 0) && (f->record)){ // Only record motif traffic (no replays and explicits)
 #else
         if (f->cl == 0){ // Only record motif traffic
 #endif
@@ -885,7 +889,13 @@ void TrafficManager::_RetireFlit( Flit *f, int subnet, int dest )
             bundle.subnet = subnet;
             bundle.sst_src = f->sst_src;
             bundle.src = f->src;
+#ifdef REPLAY_BUFFER
+            assert(f->sst_src >= 0);
+            assert(f->ori_pid >= 0);
+            bundle.pid = f->ori_pid;
+#else
             bundle.pid = f->pid;
+#endif
             bundle.vc = f->vc;
             _retired_pid[head->dest].push(bundle);
         }
@@ -912,6 +922,10 @@ void TrafficManager::_RetireFlit( Flit *f, int subnet, int dest )
         // and based on the simulation state
         if ( ( _sim_state == warming_up ) || f->record ) {
       
+            // HANS: Debugging
+            if ((f->src == _debug_src) && (f->dest == _debug_dest))
+                cout << GetSimTime() << " - Record packet " << f->pid << " sequence: " << f->seq << ", carrying ori_pid " << f->ori_pid << ", is_replay " << f->is_replay << " is_explicit " << f->is_explicit << endl;
+
             _hop_stats[f->cl]->AddSample( f->hops );
 
             if((_slowest_packet[f->cl] < 0) ||
@@ -1110,16 +1124,19 @@ void TrafficManager::_GeneratePacket( int source, int stype,
     }
   
     for ( int i = 0; i < size; ++i ) {
-        Flit * f  = Flit::New();
-        f->id     = _cur_id++;
+        Flit * f   = Flit::New();
+        f->id      = _cur_id++;
         assert(_cur_id);
-        f->pid    = pid;
-        f->watch  = watch | (gWatchOut && (_flits_to_watch.count(f->id) > 0));
+        f->pid     = pid;
+#ifdef REPLAY_BUFFER
+        f->ori_pid = pid;
+#endif
+        f->watch   = watch | (gWatchOut && (_flits_to_watch.count(f->id) > 0));
         f->subnetwork = subnetwork;
-        f->src    = source;
-        f->ctime  = time;
-        f->record = record;
-        f->cl     = cl;
+        f->src     = source;
+        f->ctime   = time;
+        f->record  = record;
+        f->cl      = cl;
 
         // HANS: Enabling DGB with large packets
         // To keep the head flit pointer
@@ -1272,12 +1289,13 @@ int TrafficManager::_GeneratePacketfromMotif( int sst_source, int source, int de
     }
 
     for ( int i = 0; i < size; ++i ) {
-        Flit * f  = Flit::New();
-        f->id     = _cur_id++;
+        Flit * f   = Flit::New();
+        f->id      = _cur_id++;
         assert(_cur_id);
-        f->pid    = pid;
-        f->watch  = watch | (gWatchOut && (_flits_to_watch.count(f->id) > 0));
-        f->watch  = false;
+        f->pid     = pid;
+        f->ori_pid = pid;
+        f->watch   = watch | (gWatchOut && (_flits_to_watch.count(f->id) > 0));
+        f->watch   = false;
         f->subnetwork = subnetwork;
         f->sst_src = sst_source;
         f->src     = source;
@@ -1385,6 +1403,7 @@ int TrafficManager::_GeneratePacketfromMotif( int sst_source, int source, int de
             replay_info bundle;
             bundle.ctime = f->ctime;
             bundle.pid = f->pid;
+            bundle.sst_src = f->sst_src;
             bundle.seq = _send_sequence[source][packet_destination];
             bundle.size = size;
             _replay_buffer[source][packet_destination].push_back( bundle );
@@ -1761,8 +1780,8 @@ void TrafficManager::_Step( )
                 if (f->head){
                     while (!_ack_queues[f->src][f->dest].empty()){
                         Ack* ack = _ack_queues[f->src][f->dest].front();
-                        if ((ack->src == _debug_dest) && (ack->dest == _debug_src))
-                            cout << GetSimTime() << " - Piggyback acks with seq " << ack->seq << " on " << f->pid << " from " << ack->src << " to " << ack->dest << " is_replay " << f->is_replay << " is_explicit " << f->is_explicit << endl;
+                        // if ((ack->src == _debug_dest) && (ack->dest == _debug_src))
+                            // cout << GetSimTime() << " - Piggyback acks with seq " << ack->seq << " on " << f->pid << " from " << ack->src << " to " << ack->dest << " is_replay " << f->is_replay << " is_explicit " << f->is_explicit << endl;
                         f->ack.push(ack);
                         _ack_queues[f->src][f->dest].pop();
                         _last_ack_send_time[f->src][f->dest] = GetSimTime();
@@ -1880,10 +1899,14 @@ void TrafficManager::_Step( )
 
                     if (!_is_waiting_for_replay[n][f->src]){ // Don't change this to 'else'
                         // float adjusted_error_rate = _error_rate * 128 * 18; //18-flit packets, each flit has 128-bit.
+#ifdef BOOKSIM_STANDALONE
                         float adjusted_error_rate = pow(10, _error_rate_power) * 128 * 18; //18-flit packets, each flit has 128-bit.
+#else
+                        float adjusted_error_rate = pow(10, _error_rate_power) * _flit_size * f->size;
+#endif
                         if (RandomFloat() < adjusted_error_rate){
                             if ((f->src == _debug_src) && (n == _debug_dest))
-                                cout << GetSimTime() << " - Node " << n << " ASKS for replay from " << f->src << " at sequence " << _recv_sequence[n][f->src] << endl;
+                                cout << GetSimTime() << " - Node " << n << " ASKS for replay from " << f->src << " at sequence " << _recv_sequence[n][f->src] << ", Packet " << f->pid << " is dropped." << endl;
                             _is_waiting_for_replay[n][f->src] = true;
                         } else {
                             if (f->seq != _recv_sequence[n][f->src]) // Very likely caused by unintended/false replays (replay is initiated even though no NACK is sent). Consider increasing the ack_timeout value.
@@ -3109,7 +3132,11 @@ void TrafficManager::_Replay()
                     while (!temp_list.empty()){
                         replay_info bundle = temp_list.front();
                         // bundle.ctime = GetSimTime();
-                        _GenerateAdditionalPacket(i, j, bundle.ctime, bundle.seq, bundle.size, 0, 1);
+#ifdef BOOKSIM_STANDALONE
+                        _GenerateAdditionalPacket(i, j, bundle.pid, bundle.ctime, bundle.seq, bundle.size, 0, 1);
+#else
+                        _GenerateAdditionalPacket(i, bundle.sst_src, j, bundle.pid, bundle.ctime, bundle.seq, bundle.size, 0, 1);
+#endif
                         temp_list.pop_front();
                         _replay_buffer[i][j].push_back(bundle);
                     }
@@ -3124,7 +3151,11 @@ void TrafficManager::_SendExplicits()
     for (int i = 0; i < _nodes; i++){
         for (int j = 0; j < _nodes; j++){
             if ((!_ack_queues[i][j].empty()) && ((GetSimTime() - _last_ack_send_time[i][j]) > _piggyback_max_wait)){
-                _GenerateAdditionalPacket(i, j, GetSimTime(), -1, 1, 1, 0);
+#ifdef BOOKSIM_STANDALONE
+                _GenerateAdditionalPacket(i, j, 0, GetSimTime(), -1, 1, 1, 0);
+#else
+                _GenerateAdditionalPacket(i, -1, j, 0, GetSimTime(), -1, 1, 1, 0);
+#endif
             }
         }
     }
@@ -3146,7 +3177,11 @@ void TrafficManager::_IssueAck(int pid, int data_src, int data_dest, int seq)
     _ack_queues[data_dest][data_src].push(ack);
 }
 
-void TrafficManager::_GenerateAdditionalPacket( int source, int dest, int time, int seq, int size, bool is_explicit, bool is_replay )
+#ifdef BOOKSIM_STANDALONE
+void TrafficManager::_GenerateAdditionalPacket( int source, int dest, int ori_pid, int time, int seq, int size, bool is_explicit, bool is_replay )
+#else
+void TrafficManager::_GenerateAdditionalPacket( int source, int sst_source, int dest, int ori_pid, int time, int seq, int size, bool is_explicit, bool is_replay )
+#endif
 {
     Flit::FlitType packet_type = Flit::ANY_TYPE;
     int pid = _cur_pid++;
@@ -3157,6 +3192,8 @@ void TrafficManager::_GenerateAdditionalPacket( int source, int dest, int time, 
     // bool record = (is_replay) ? true : false;
     bool record = true;
     bool watch = gWatchOut && (_packets_to_watch.count(pid) > 0);
+    if (is_replay)
+        assert(ori_pid < pid);
 
     if ((packet_destination <0) || (packet_destination >= _nodes)) {
         ostringstream err;
@@ -3180,16 +3217,20 @@ void TrafficManager::_GenerateAdditionalPacket( int source, int dest, int time, 
     // deque<Flit*> temp;
   
     for ( int i = 0; i < size; ++i ) {
-        Flit * f  = Flit::New();
-        f->id     = _cur_id++;
+        Flit * f   = Flit::New();
+        f->id      = _cur_id++;
         assert(_cur_id);
-        f->pid    = pid;
-        f->watch  = watch | (gWatchOut && (_flits_to_watch.count(f->id) > 0));
+        f->pid     = pid;
+        f->ori_pid = ori_pid;
+        f->watch   = watch | (gWatchOut && (_flits_to_watch.count(f->id) > 0));
         f->subnetwork = subnetwork;
-        f->src    = source;
-        f->ctime  = time;
-        f->record = record;
-        f->cl     = cl;
+        f->src     = source;
+#ifndef BOOKSIM_STANDALONE
+        f->sst_src = sst_source;
+#endif
+        f->ctime   = time;
+        f->record  = record;
+        f->cl      = cl;
         f->is_explicit  = is_explicit;
         f->is_replay    = is_replay;
 

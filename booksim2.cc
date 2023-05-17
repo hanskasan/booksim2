@@ -185,13 +185,17 @@ booksim2::booksim2(ComponentId_t id, Params& params) : Component(id)
     
     int error_rate_power = params.find<int>("error_rate_power", -1, found);
     config.Assign("error_rate_power", error_rate_power);
-    printf("Error rate power is %d\n", error_rate_power);
+    printf("The error rate per bit is 10^%d\n", error_rate_power);
 
     int piggyback_max_wait = params.find<int>("piggyback_max_wait", -1, found);
     config.Assign("piggyback_max_wait", piggyback_max_wait);
 
     int ack_timeout = params.find<int>("ack_timeout", -1, found);
     config.Assign("ack_timeout", ack_timeout);
+
+    int flit_size = params.find<int>("flit_size", 1, found); // Flit size in bits
+    config.Assign("flit_size", flit_size);
+    printf("The flit size is %d bits\n", flit_size);
 #endif
 
     // END: Override configuration with SST parameters
@@ -302,6 +306,8 @@ booksim2::~booksim2()
     // printf("Nodes: %d, subnets: %d\n", _net[i]->NumNodes(), subnets);
     delete _net[i];
   }
+
+  // printf("Num notif nodes: %d\n", _num_motif_nodes);
 
   // PRINT LAST EJECTION TIME
   printf("Last foreground(FG) ejection time: %d\n", _last_fg_ejection_time);
@@ -452,6 +458,8 @@ bool booksim2::BabyStep(Cycle_t cycle)
 
         for (int iter_dq = 0; iter_dq < _injected_events[iter_dest][sst_src].size(); iter_dq++){
           // Search for matching PID
+          assert(!_injected_events[iter_dest][sst_src].empty());
+          // cout << "COMPARE: " << _injected_events[iter_dest][sst_src][iter_dq].first << ", " << bundle.pid << endl;
           if (_injected_events[iter_dest][sst_src][iter_dq].first == bundle.pid){
             found = true;
 

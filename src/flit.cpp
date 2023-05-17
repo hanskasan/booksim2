@@ -70,6 +70,9 @@ void Flit::Reset()
   atime     = -1 ;
   id        = -1 ;
   pid       = -1 ;
+#ifdef REPLAY_BUFFER
+  ori_pid   = -1 ;
+#endif
   hops      = 0 ;
   watch     = false ;
   record    = false ;

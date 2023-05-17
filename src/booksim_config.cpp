@@ -224,6 +224,8 @@ BookSimConfig::BookSimConfig( )
 #ifndef BOOKSIM_STANDALONE
   // ============ Synthetic background traffic ============ 
   _int_map["synthetic_nodes"] = 0; // number of synthetic nodes per router
+
+  _int_map["flit_size"] = 1; // flit size in bits
 #endif
 
   //==== Simulation parameters ==========================

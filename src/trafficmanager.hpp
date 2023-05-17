@@ -69,6 +69,9 @@ struct retired_info {
 struct replay_info {
   int ctime;
   int pid;
+#ifndef BOOKSIM_STANDALONE
+  int sst_src;
+#endif
   int seq;
   int size;
 };
@@ -138,6 +141,9 @@ float _error_rate;
 int _error_rate_power;
 int _ack_timeout;
 int _piggyback_max_wait;
+#ifndef BOOKSIM_STANDALONE
+int _flit_size; // In bits
+#endif
 #endif
 
   // ============ Message priorities ============ 
@@ -374,8 +380,8 @@ int _piggyback_max_wait;
   vector<vector<int  > > _send_sequence;
   vector<vector<int  > > _recv_sequence;
 
-  int _debug_src = 0;
-  int _debug_dest = 1;
+  int _debug_src = -1;
+  int _debug_dest = -1;
 
   int _debug_pid = -1;
 #endif
@@ -434,7 +440,11 @@ protected:
   void _SendExplicits();
 
   void _IssueAck( int pid, int data_src, int data_dest, int seq );
-  void _GenerateAdditionalPacket( int source, int dest, int time, int seq, int size, bool is_explicit, bool is_replay );
+#ifdef BOOKSIM_STANDALONE
+  void _GenerateAdditionalPacket( int source, int dest, int ori_pid, int time, int seq, int size, bool is_explicit, bool is_replay );
+#else
+  void _GenerateAdditionalPacket( int source, int sst_source, int dest, int ori_pid, int time, int seq, int size, bool is_explicit, bool is_replay );
+#endif
 #endif
 
 public:
