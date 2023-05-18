@@ -380,8 +380,8 @@ int _flit_size; // In bits
   vector<vector<int  > > _send_sequence;
   vector<vector<int  > > _recv_sequence;
 
-  int _debug_src = -1;
-  int _debug_dest = -1;
+  int _debug_src = 2;
+  int _debug_dest = 3;
 
   int _debug_pid = -1;
 #endif
@@ -502,16 +502,20 @@ public:
   void jumpTime(int future) {
     assert(future >= 0);
     printf("Jump time from: %d to %d\n", _time, future);
-    _jumped_time += future - _time;
+    int time_diff = future - _time;
+    _jumped_time += time_diff;
     //_time = future;
 
-    for (int i = 0; i < (future - _time); i++){
+    for (int i = 0; i < time_diff; i++){
       _Step();
     }
+    assert(_time == future);
   }
 
   int getRunTime(){
     int net_time = _time - _jumped_time;
+    if (net_time < 0)
+      cout << "net_time: " << net_time << ", current time: " << _time << ", jumped_time: " << _jumped_time << endl;
     assert(net_time >= 0);
     return net_time;
   }

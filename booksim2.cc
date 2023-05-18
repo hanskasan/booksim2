@@ -294,11 +294,11 @@ booksim2::~booksim2()
   // assert(trafficManager->_CreditsOutstanding() == 0);
 
   // PRINT LAST EJECTION AND RETIREMENT TIME
-  PrintInjectionTime();
-  PrintEjectionTime();
-  PrintRetireTime();
-  trafficManager->PrintPlatDistribution();
-  trafficManager->PrintNlatDistribution();
+  // PrintInjectionTime();
+  // PrintEjectionTime();
+  // PrintRetireTime();
+  // trafficManager->PrintPlatDistribution();
+  // trafficManager->PrintNlatDistribution();
 
   int subnets = config.GetInt("subnets");
 
@@ -618,7 +618,7 @@ bool booksim2::BabyStep(Cycle_t cycle)
     if ((!is_empty) || (!trafficManager->_IsAllReplayBufferEmpty())){
 #else
     // if ((!is_empty) || (trafficManager->_CreditsOutstanding() > 0)){
-    // if (!is_empty){
+    if (!is_empty){
 #endif
       // Return false to indicate the clock handler should not be disabled
       _is_request_alarm = false;

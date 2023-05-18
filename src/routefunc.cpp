@@ -1538,6 +1538,9 @@ void dim_order_torus( const Router *r, const Flit *f, int in_channel,
 
   int out_port;
 
+  // Always MIN routing
+  f->min = 1;
+
   if(inject) {
 
     out_port = -1;
@@ -1651,6 +1654,12 @@ void dim_order_hans_torus( const Router *r, const Flit *f, int in_channel,
   outputs->Clear( );
 
   // Override VC selection
+  // int dist2 = gK - 2 * ( ( f->dest - f->src + gK ) % gK );
+  // int vcSel;
+  // if (dist2 > 0)
+  //   vcSel = 0;
+  // else
+  //   vcSel = 1;
   int vcSel = f->cl;
 
   // outputs->AddRange( out_port, vcBegin, vcEnd );
@@ -2053,7 +2062,9 @@ void InitializeRoutingMap( const Configuration & config )
   gRoutingFunctionMap["dim_order_ni_mesh"]  = &dim_order_ni_mesh;
   gRoutingFunctionMap["dim_order_pni_mesh"]  = &dim_order_pni_mesh;
   gRoutingFunctionMap["dim_order_torus"] = &dim_order_torus;
+#ifdef REPLAY_BUFFER
   gRoutingFunctionMap["dim_order_hans_torus"] = &dim_order_hans_torus;
+#endif
   gRoutingFunctionMap["dim_order_ni_torus"] = &dim_order_ni_torus;
   gRoutingFunctionMap["dim_order_bal_torus"] = &dim_order_bal_torus;
 
