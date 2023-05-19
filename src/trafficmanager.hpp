@@ -380,8 +380,8 @@ int _flit_size; // In bits
   vector<vector<int  > > _send_sequence;
   vector<vector<int  > > _recv_sequence;
 
-  int _debug_src = 2;
-  int _debug_dest = 3;
+  int _debug_src = -1;
+  int _debug_dest = -1;
 
   int _debug_pid = -1;
 #endif

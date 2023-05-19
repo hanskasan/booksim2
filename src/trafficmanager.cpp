@@ -1472,8 +1472,8 @@ int TrafficManager::_InjectMotif( int sst_source, int source, int dest, int size
     // _qtime is not used because we don't use the (_partial_packets[input][c]) condition to determine whether the packet should be injected to the network.
     // When to / not to inject is solely determined by the Motif
 
-    // if (source == 0)
-    //     cout << "InjectMotif with size: " << size << " at: " << GetSimTime() << endl;
+    if (source == 0)
+        cout << GetSimTime() << " - InjectMotif from " << source << " to " << dest << " with size " << size << endl;
 
     return _GeneratePacketfromMotif( sst_source, source, dest, size, 0 ); // All motif-generated packets are assigned to class 0
 }
@@ -1762,15 +1762,11 @@ void TrafficManager::_Step( )
                 _partial_packets[n][c].pop_front();
 
 #ifndef BOOKSIM_STANDALONE
-                // if (n == 0)
-                //     cout << "TrafficManager inject fID: " << f->id << " at: " << GetSimTime() << endl;
-
-#ifdef REPLAY_BUFFER
-                if ((f->cl == 0) && (!f->is_replay))
-#else
+#ifndef REPLAY_BUFFER
+                // if ((f->cl == 0) && (!f->is_replay))
                 if (f->cl == 0) // Only consider message flits
-#endif
                     _sst_credits[n]++;
+#endif
 #endif
 
 #ifdef TRACK_FLOWS
@@ -1874,6 +1870,11 @@ void TrafficManager::_Step( )
 
                         if (temp->seq != _replay_buffer[temp->dest][temp->src].front().seq)
                             cout << "ACK ERROR at " << temp->dest << " from " << temp->src << " with seq " << temp->seq << " expects " << _replay_buffer[temp->dest][temp->src].front().seq << ", pID: " << f->pid << endl;
+#ifndef BOOKSIM_STANDALONE
+                        if ((temp->dest == 0) && (temp->src == 1))
+                            cout << GetSimTime() << " - Replay buffer size from " << temp->dest << " to " << temp->src << " is " << _replay_buffer[temp->dest][temp->src].size() << endl;
+                        _sst_credits[n] += _replay_buffer[temp->dest][temp->src].front().size;
+#endif
                         assert(temp->seq == _replay_buffer[temp->dest][temp->src].front().seq);
                         _replay_buffer[temp->dest][temp->src].pop_front();
 
@@ -3125,8 +3126,9 @@ void TrafficManager::_Replay()
                 // Copy the replay buffer content to injection queue
                 // if ((GetSimTime() - gen_time) > _ack_timeout){
                 if ((GetSimTime() - _last_ack_recv_time[i][j]) > _ack_timeout){
-                        if ((i == _debug_src) && (j == _debug_dest))
-                            cout << GetSimTime() << " - REPLAY from " << i << " to " << j << ", replay buffer size is now " << _replay_buffer[i][j].size() << ", front PID: " << _replay_buffer[i][j].front().pid << ", front seq: " << _replay_buffer[i][j].front().seq << ", back seq: " << _replay_buffer[i][j].back().seq << ", front gentime " << _replay_buffer[i][j].front().ctime << ", last_recv_ack at " << _last_ack_recv_time[i][j] << endl;
+                    if ((i == _debug_src) && (j == _debug_dest)){
+                        cout << GetSimTime() << " - REPLAY from " << i << " to " << j << ", replay buffer size is now " << _replay_buffer[i][j].size() << ", front PID: " << _replay_buffer[i][j].front().pid << ", front seq: " << _replay_buffer[i][j].front().seq << ", back seq: " << _replay_buffer[i][j].back().seq << ", front gentime " << _replay_buffer[i][j].front().ctime << ", last_recv_ack at " << _last_ack_recv_time[i][j] << endl;
+                    }
 
                     _last_ack_recv_time[i][j] = GetSimTime(); // Prevent multiple replays
 
@@ -3319,8 +3321,8 @@ void TrafficManager::_GenerateAdditionalPacket( int source, int sst_source, int 
             f->seq = seq;
             // temp.push_back(f);
 
-            // if ((f->src == _debug_src) && (f->dest == _debug_dest))
-                // cout << GetSimTime() << " - Generate replay packet from " << f->src << " to " << f->dest << " with sequence " << seq << endl;
+            if ((f->src == _debug_src) && (f->dest == _debug_dest))
+                cout << GetSimTime() << " - Generate replay packet from " << f->src << " to " << f->dest << " with sequence " << seq << endl;
 
             // _partial_packets[source][cl].push_back( f );
         } else {
