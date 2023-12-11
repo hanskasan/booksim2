@@ -105,6 +105,7 @@ BookSimConfig::BookSimConfig( )
   
   _int_map["num_vcs"]         = 16;  
   _int_map["vc_buf_size"]     = 8;  //per vc buffer size
+  _int_map["global_vc_buf_size"]  = -1; //per vc global buffer size
   _int_map["buf_size"]        = -1; //shared buffer size
   AddStrField("buffer_policy", "private"); //buffer sharing policy
 
