@@ -85,7 +85,8 @@ IQRouter::IQRouter( Configuration const & config, Module *parent,
   for ( int i = 0; i < _inputs; ++i ) {
     ostringstream module_name;
     module_name << "buf_" << i;
-    _buf[i] = new Buffer(config, _outputs, this, module_name.str( ) );
+    bool is_long = (gIsDragonfly && (i > gK + (2 * gK - 1))) ? true : false;
+    _buf[i] = new Buffer(config, _outputs, this, module_name.str( ), is_long );
     module_name.str("");
   }
 
@@ -94,7 +95,8 @@ IQRouter::IQRouter( Configuration const & config, Module *parent,
   for (int j = 0; j < _outputs; ++j) {
     ostringstream module_name;
     module_name << "next_vc_o" << j;
-    _next_buf[j] = new BufferState( config, this, module_name.str( ) );
+    bool is_long = (gIsDragonfly && (j > gK + (2 * gK - 1))) ? true : false;
+    _next_buf[j] = new BufferState( config, this, module_name.str( ), is_long );
     module_name.str("");
   }
 

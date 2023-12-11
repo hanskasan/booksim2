@@ -50,4 +50,7 @@ extern bool gTrace;
 
 extern std::ostream * gWatchOut;
 
+// HANS: Are we using dragonfly
+extern bool gIsDragonfly;
+
 #endif

@@ -210,6 +210,9 @@ void DragonFlyNew::_ComputeSize( const Configuration &config )
   _grp_num_routers = gA;
   _grp_num_nodes =_grp_num_routers*gP;
 
+  // HANS: Are we using dragonfly?
+  gIsDragonfly = true;
+
 }
 
 void DragonFlyNew::_BuildNet( const Configuration &config )
@@ -470,7 +473,7 @@ void ugal_dragonflynew( const Router *r, const Flit *f, int in_channel,
   
   //this constant biases the adaptive decision toward minimum routing
   //negative value woudl biases it towards nonminimum routing
-  int adaptive_threshold = 30;
+  int adaptive_threshold = 0;
 
   int _grp_num_routers= gA;
   int _grp_num_nodes =_grp_num_routers*gP;

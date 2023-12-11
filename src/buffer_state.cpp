@@ -45,7 +45,7 @@
 //#define DEBUG_FEEDBACK
 //#define DEBUG_SIMPLEFEEDBACK
 
-BufferState::BufferPolicy::BufferPolicy(Configuration const & config, BufferState * parent, const string & name)
+BufferState::BufferPolicy::BufferPolicy(Configuration const & config, BufferState * parent, const string & name, bool global)
 : Module(parent, name), _buffer_state(parent)
 {
 }
@@ -59,12 +59,12 @@ void BufferState::BufferPolicy::SendingFlit(Flit const * const f) {
 void BufferState::BufferPolicy::FreeSlotFor(int vc) {
 }
 
-BufferState::BufferPolicy * BufferState::BufferPolicy::New(Configuration const & config, BufferState * parent, const string & name)
+BufferState::BufferPolicy * BufferState::BufferPolicy::New(Configuration const & config, BufferState * parent, const string & name, bool global)
 {
   BufferPolicy * sp = NULL;
   string buffer_policy = config.GetStr("buffer_policy");
   if(buffer_policy == "private") {
-    sp = new PrivateBufferPolicy(config, parent, name);
+    sp = new PrivateBufferPolicy(config, parent, name, global);
   } else if(buffer_policy == "shared") {
     sp = new SharedBufferPolicy(config, parent, name);
   } else if(buffer_policy == "limited") {
@@ -83,13 +83,19 @@ BufferState::BufferPolicy * BufferState::BufferPolicy::New(Configuration const &
   return sp;
 }
 
-BufferState::PrivateBufferPolicy::PrivateBufferPolicy(Configuration const & config, BufferState * parent, const string & name)
+BufferState::PrivateBufferPolicy::PrivateBufferPolicy(Configuration const & config, BufferState * parent, const string & name, bool global)
   : BufferPolicy(config, parent, name)
 {
   int const vcs = config.GetInt( "num_vcs" );
   int const buf_size = config.GetInt("buf_size");
+  int const global_buf_size = config.GetInt("global_vc_buf_size");
   if(buf_size <= 0) {
-    _vc_buf_size = config.GetInt("vc_buf_size");
+    if (global) {
+      if (global_buf_size < 0) _vc_buf_size = config.GetInt( "vc_buf_size" );
+      else _vc_buf_size = global_buf_size;
+    } else {
+      _vc_buf_size = config.GetInt("vc_buf_size");
+    }
   } else {
     _vc_buf_size = buf_size / vcs;
   }
@@ -536,16 +542,23 @@ void BufferState::SimpleFeedbackSharedBufferPolicy::FreeSlotFor(int vc)
   SharedBufferPolicy::FreeSlotFor(vc);
 }
 
-BufferState::BufferState( const Configuration& config, Module *parent, const string& name ) : 
+BufferState::BufferState( const Configuration& config, Module *parent, const string& name, bool global ) : 
   Module( parent, name ), _occupancy(0)
 {
   _vcs = config.GetInt( "num_vcs" );
   _size = config.GetInt("buf_size");
+  int global_buf_size = config.GetInt("global_vc_buf_size");
   if(_size < 0) {
-    _size = _vcs * config.GetInt("vc_buf_size");
+    if (global) {
+      if (global_buf_size < 0) _size = _vcs * config.GetInt( "vc_buf_size" );
+      else _size= _vcs * global_buf_size;
+    }
+    else {
+      _size = _vcs * config.GetInt("vc_buf_size");
+    }
   }
 
-  _buffer_policy = BufferPolicy::New(config, this, "policy");
+  _buffer_policy = BufferPolicy::New(config, this, "policy", global);
 
   _wait_for_tail_credit = config.GetInt( "wait_for_tail_credit" );
 
