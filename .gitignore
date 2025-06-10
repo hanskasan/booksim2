@@ -3,3 +3,6 @@
 ._*
 .Apple*
 .DS_Store
+
+*.o
+*.d
